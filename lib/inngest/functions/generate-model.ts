@@ -1,6 +1,6 @@
 import { inngest } from '../client';
 import sql from '@/lib/db';
-import { createImageTo3D, pollUntilComplete } from '@/lib/meshy/client';
+import { createImageTo3D, createMultiImageTo3D, pollUntilComplete } from '@/lib/tripo/client';
 import { identifyMaterials } from '@/lib/vision/identify-materials';
 import { downloadToBuffer, uploadGlb, uploadTexture, generateAssetKey } from '@/lib/r2/client';
 
@@ -11,13 +11,13 @@ import { downloadToBuffer, uploadGlb, uploadTexture, generateAssetKey } from '@/
  * Data: { jobId: string, clientId: string }
  *
  * Steps:
- *   1. submit-to-meshy     → send image, get task ID
- *   2. wait-for-meshy      → poll until SUCCEEDED
- *   3. transfer-to-r2      → download GLB + thumbnail, upload to R2
+ *   1. submit-to-tripo      → upload image(s), create task
+ *   2. wait-for-tripo       → poll until success
+ *   3. transfer-to-r2       → download GLB + rendered image, upload to R2
  *   4. identify-materials   → Claude Vision material analysis
  *   5. create-asset         → insert asset record
  *
- * Phase 1 skips Blender — uses Meshy's built-in texturing.
+ * Phase 1 uses Tripo's built-in texturing. Phase 2 replaces with PBR.
  */
 export const generateModel = inngest.createFunction(
   {
@@ -28,19 +28,17 @@ export const generateModel = inngest.createFunction(
   async ({ event, step }) => {
     const { jobId } = event.data;
 
-    // Step 1: Submit to Meshy
-    const meshyTaskId = await step.run('submit-to-meshy', async () => {
+    // Step 1: Submit to Tripo
+    const tripoTaskId = await step.run('submit-to-tripo', async () => {
       const [job] = await sql`SELECT * FROM generation_jobs WHERE id = ${jobId}`;
       if (!job) throw new Error(`Job ${jobId} not found`);
 
       const images = job.source_images as string[];
-      const primaryImage = images[0];
 
-      const taskId = await createImageTo3D({
-        image_url: primaryImage,
-        enable_pbr: true,
-        target_polycount: 30000,
-      });
+      // Use multi-image endpoint when 2+ source images provided
+      const taskId = images.length > 1
+        ? await createMultiImageTo3D({ image_urls: images.slice(0, 4) })
+        : await createImageTo3D({ image_url: images[0] });
 
       await sql`
         UPDATE generation_jobs
@@ -52,35 +50,39 @@ export const generateModel = inngest.createFunction(
       return taskId;
     });
 
-    // Step 2: Wait for Meshy completion
-    const meshyResult = await step.run('wait-for-meshy', async () => {
-      return pollUntilComplete(meshyTaskId);
+    // Step 2: Wait for Tripo completion
+    const tripoResult = await step.run('wait-for-tripo', async () => {
+      const result = await pollUntilComplete(tripoTaskId);
+      return {
+        modelUrl: result.output?.pbr_model || result.output?.model || null,
+        thumbnailUrl: result.output?.rendered_image || null,
+      };
     });
 
-    // Step 3: Download Meshy output and upload to R2
+    // Step 3: Download Tripo output and upload to R2
     const r2Urls = await step.run('transfer-to-r2', async () => {
-      if (!meshyResult.model_urls?.glb) {
-        throw new Error('Meshy did not return a GLB URL');
+      if (!tripoResult.modelUrl) {
+        throw new Error('Tripo did not return a model URL');
       }
 
-      const glbBuffer = await downloadToBuffer(meshyResult.model_urls.glb);
+      const glbBuffer = await downloadToBuffer(tripoResult.modelUrl);
       const glbKey = generateAssetKey(jobId, 'model.glb');
-      const glbUrl = await uploadGlb(glbBuffer, glbKey);
+      const glbPublicUrl = await uploadGlb(glbBuffer, glbKey);
 
       let thumbnailUrl: string | undefined;
-      if (meshyResult.thumbnail_url) {
-        const thumbBuffer = await downloadToBuffer(meshyResult.thumbnail_url);
+      if (tripoResult.thumbnailUrl) {
+        const thumbBuffer = await downloadToBuffer(tripoResult.thumbnailUrl);
         const thumbKey = generateAssetKey(jobId, 'thumbnail.png');
         thumbnailUrl = await uploadTexture(thumbBuffer, thumbKey);
       }
 
       await sql`
         UPDATE generation_jobs
-        SET status = 'mesh_ready', raw_mesh_url = ${glbUrl}, updated_at = NOW()
+        SET status = 'mesh_ready', raw_mesh_url = ${glbPublicUrl}, updated_at = NOW()
         WHERE id = ${jobId}
       `;
 
-      return { glbUrl, thumbnailUrl, fileSize: glbBuffer.length };
+      return { glbUrl: glbPublicUrl, thumbnailUrl, fileSize: glbBuffer.length };
     });
 
     // Step 4: Material identification via Claude Vision

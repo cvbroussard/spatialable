@@ -9,6 +9,13 @@ export interface MeshyCreateParams {
   target_polycount?: number;
 }
 
+export interface MeshyMultiImageParams {
+  image_urls: string[];
+  enable_pbr?: boolean;
+  topology?: 'quad' | 'triangle';
+  target_polycount?: number;
+}
+
 export type MeshyTaskStatus = 'PENDING' | 'IN_PROGRESS' | 'SUCCEEDED' | 'FAILED' | 'CANCELED';
 
 export interface MeshyTaskResult {

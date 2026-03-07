@@ -1,7 +1,7 @@
 import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 
 // ---------------------------------------------------------------------------
-// R2 Client
+// R2 Client — shared across both buckets (same account, same API key)
 // ---------------------------------------------------------------------------
 
 const r2Client = new S3Client({
@@ -13,8 +13,15 @@ const r2Client = new S3Client({
   },
 });
 
-const BUCKET_NAME = process.env.R2_BUCKET_NAME || 'spatialable-assets';
-const PUBLIC_URL = process.env.R2_PUBLIC_URL || `https://${BUCKET_NAME}.r2.dev`;
+// ---------------------------------------------------------------------------
+// Buckets
+// ---------------------------------------------------------------------------
+
+const ASSETS_BUCKET = process.env.R2_ASSETS_BUCKET || 'spatialable-assets';
+const ASSETS_URL = process.env.R2_ASSETS_URL || 'https://cdn.assets.spatialable.com';
+
+const PIPELINE_BUCKET = process.env.R2_PIPELINE_BUCKET || 'spatialable-pipeline';
+const PIPELINE_URL = process.env.R2_PIPELINE_URL || 'https://cdn.pipeline.spatialable.com';
 
 // ---------------------------------------------------------------------------
 // Key generators
@@ -28,41 +35,59 @@ export function generateMaterialKey(materialId: number, mapType: string): string
   return `materials/${materialId}/${mapType}`;
 }
 
+export function generatePipelineKey(jobId: string, filename: string): string {
+  return `jobs/${jobId}/${filename}`;
+}
+
 // ---------------------------------------------------------------------------
-// Upload
+// Upload — Assets bucket (finished deliverables, public, immutable)
 // ---------------------------------------------------------------------------
 
 export async function uploadGlb(buffer: Buffer, key: string): Promise<string> {
   await r2Client.send(new PutObjectCommand({
-    Bucket: BUCKET_NAME,
+    Bucket: ASSETS_BUCKET,
     Key: key,
     Body: buffer,
     ContentType: 'model/gltf-binary',
     CacheControl: 'public, max-age=31536000, immutable',
   }));
-  return `${PUBLIC_URL}/${key}`;
+  return `${ASSETS_URL}/${key}`;
 }
 
 export async function uploadTexture(buffer: Buffer, key: string, contentType = 'image/png'): Promise<string> {
   await r2Client.send(new PutObjectCommand({
-    Bucket: BUCKET_NAME,
+    Bucket: ASSETS_BUCKET,
     Key: key,
     Body: buffer,
     ContentType: contentType,
     CacheControl: 'public, max-age=31536000, immutable',
   }));
-  return `${PUBLIC_URL}/${key}`;
+  return `${ASSETS_URL}/${key}`;
 }
 
-export async function uploadFile(buffer: Buffer, key: string, contentType: string): Promise<string> {
+export async function uploadAssetFile(buffer: Buffer, key: string, contentType: string): Promise<string> {
   await r2Client.send(new PutObjectCommand({
-    Bucket: BUCKET_NAME,
+    Bucket: ASSETS_BUCKET,
     Key: key,
     Body: buffer,
     ContentType: contentType,
     CacheControl: 'public, max-age=31536000, immutable',
   }));
-  return `${PUBLIC_URL}/${key}`;
+  return `${ASSETS_URL}/${key}`;
+}
+
+// ---------------------------------------------------------------------------
+// Upload — Pipeline bucket (intermediate artifacts, private, ephemeral)
+// ---------------------------------------------------------------------------
+
+export async function uploadPipelineFile(buffer: Buffer, key: string, contentType: string): Promise<string> {
+  await r2Client.send(new PutObjectCommand({
+    Bucket: PIPELINE_BUCKET,
+    Key: key,
+    Body: buffer,
+    ContentType: contentType,
+  }));
+  return `${PIPELINE_URL}/${key}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -82,8 +107,12 @@ export async function downloadToBuffer(url: string): Promise<Buffer> {
 // Util
 // ---------------------------------------------------------------------------
 
-export function getPublicUrl(key: string): string {
-  return `${PUBLIC_URL}/${key}`;
+export function getAssetUrl(key: string): string {
+  return `${ASSETS_URL}/${key}`;
+}
+
+export function getPipelineUrl(key: string): string {
+  return `${PIPELINE_URL}/${key}`;
 }
 
 export function isR2Configured(): boolean {

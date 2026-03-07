@@ -1,6 +1,6 @@
-import type { MeshyCreateParams, MeshyTaskResult } from './types';
+import type { MeshyCreateParams, MeshyMultiImageParams, MeshyTaskResult } from './types';
 
-const MESHY_API_BASE = 'https://api.meshy.ai/openapi/v2';
+const MESHY_API_BASE = 'https://api.meshy.ai/openapi/v1';
 
 function getApiKey(): string {
   const key = process.env.MESHY_API_KEY;
@@ -39,6 +39,26 @@ export async function createImageTo3D(params: MeshyCreateParams): Promise<string
   };
 
   const result = await meshyFetch('/image-to-3d', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+
+  return result.result;
+}
+
+/**
+ * Submit multiple images (1-4) for 3D model generation.
+ * Better geometry from multiple angles.
+ */
+export async function createMultiImageTo3D(params: MeshyMultiImageParams): Promise<string> {
+  const body = {
+    image_urls: params.image_urls,
+    enable_pbr: params.enable_pbr ?? true,
+    topology: params.topology ?? 'triangle',
+    target_polycount: params.target_polycount ?? 30000,
+  };
+
+  const result = await meshyFetch('/multi-image-to-3d', {
     method: 'POST',
     body: JSON.stringify(body),
   });
