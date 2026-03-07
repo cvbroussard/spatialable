@@ -1,10 +1,11 @@
-# CLAUDE.md — ModelVault
+# CLAUDE.md — SpatialAble
 
 ## Project Overview
 
-Standalone 3D product model generation and asset library service. Generates GLB files from product images using an automated pipeline: Meshy API (mesh), Claude Vision (material ID), headless Blender/Modal (PBR material application). Assets stored in Cloudflare R2.
+Spatial commerce asset library service. Licensed 3D assets (GLB), Image Clusters (pre-rendered turntables), and Environment Panoramas — consumed via API. Generation pipeline is proprietary. The library is the product.
 
-Dev code: **ModelVault**. RetailSpec is the first API client.
+**Brand**: SpatialAble — spatialable.com
+**Repo**: `spatialable` (formerly modelvault)
 
 ## Tech Stack
 

@@ -1,8 +1,8 @@
-# ModelVault — Product Brief
+# SpatialAble — Product Brief
 
 ## Position
 
-ModelVault is a licensed 3D asset library serving three deliverables — 3D Models, Image Clusters, and Environment Panoramas — consumed via API. The generation pipeline is proprietary and behind the curtain. The library is the product. The moat is the accumulated, curated, UPC-matched catalog. The pipeline commoditizes over time — that reduces cost, not value. Spatial commerce is upside positioning, not a dependency.
+SpatialAble is a licensed 3D asset library serving three deliverables — 3D Models, Image Clusters, and Environment Panoramas — consumed via API. The generation pipeline is proprietary and behind the curtain. The library is the product. The moat is the accumulated, curated, UPC-matched catalog. The pipeline commoditizes over time — that reduces cost, not value. Spatial commerce is upside positioning, not a dependency.
 
 ---
 
@@ -26,11 +26,11 @@ An immersive interior/exterior view assembled from existing photography. AI sour
 
 ## Market Position
 
-ModelVault is a **library company with an API**. Assets are built behind the curtain — the generation pipeline is proprietary. Consumers see a catalog of retail-grade assets and pay for licensed usage. The API is the primary distribution channel.
+SpatialAble is a **library company with an API**. Assets are built behind the curtain — the generation pipeline is proprietary. Consumers see a catalog of retail-grade assets and pay for licensed usage. The API is the primary distribution channel.
 
 ### Competitive Landscape
 
-| Player | What they are | ModelVault difference |
+| Player | What they are | SpatialAble difference |
 |--------|--------------|----------------------|
 | Threekit / 3D Source | Services-heavy, artist onboarding, per-client work | Automated, no headcount scaling |
 | Meshy / Tripo / CSM | Raw AI mesh generation, developer tools | Retail-grade output, curated library, UPC-matched |
@@ -38,7 +38,7 @@ ModelVault is a **library company with an API**. Assets are built behind the cur
 | TurboSquid / Sketchfab | Artist-uploaded marketplace, inconsistent quality | Curated, standardized, retail-specific taxonomy |
 | Cylindo | Image-sequence visualization, services model | Automated pipeline, API-first, multi-deliverable |
 
-### What ModelVault is not
+### What SpatialAble is not
 
 - Not a marketplace (we own and license the assets, we don't host third-party uploads)
 - Not a services company (no per-client artist work, no onboarding engagements)
@@ -61,8 +61,8 @@ The library's value compounds independently of any single customer:
 
 ### Pipeline Commoditization
 
-The 3D generation pipeline will commoditize. Photorealistic AI texturing will be solved within 12-18 months. This helps ModelVault — generation cost drops, quality improves, pipeline components are swappable. The pipeline was never the moat. The library is.
+The 3D generation pipeline will commoditize. Photorealistic AI texturing will be solved within 12-18 months. This helps SpatialAble — generation cost drops, quality improves, pipeline components are swappable. The pipeline was never the moat. The library is.
 
 ### Spatial Commerce
 
-Apple Vision Pro, Meta Quest, and spatial computing shift 3D product assets from nice-to-have to mandatory infrastructure. You cannot render a product in a spatial environment without a 3D model — there is no JPEG fallback. If spatial commerce reaches mainstream adoption, every product in commerce needs a 3D asset. ModelVault is positioned for this demand curve without depending on it. The library has value today for conventional product visualization. Spatial commerce is exponential upside.
+Apple Vision Pro, Meta Quest, and spatial computing shift 3D product assets from nice-to-have to mandatory infrastructure. You cannot render a product in a spatial environment without a 3D model — there is no JPEG fallback. If spatial commerce reaches mainstream adoption, every product in commerce needs a 3D asset. SpatialAble is positioned for this demand curve without depending on it. The library has value today for conventional product visualization. Spatial commerce is exponential upside.

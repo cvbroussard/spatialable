@@ -13,7 +13,7 @@ const r2Client = new S3Client({
   },
 });
 
-const BUCKET_NAME = process.env.R2_BUCKET_NAME || 'modelvault-assets';
+const BUCKET_NAME = process.env.R2_BUCKET_NAME || 'spatialable-assets';
 const PUBLIC_URL = process.env.R2_PUBLIC_URL || `https://${BUCKET_NAME}.r2.dev`;
 
 // ---------------------------------------------------------------------------

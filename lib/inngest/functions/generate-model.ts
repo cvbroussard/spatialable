@@ -7,7 +7,7 @@ import { downloadToBuffer, uploadGlb, uploadTexture, generateAssetKey } from '@/
 /**
  * Main pipeline orchestration function.
  *
- * Event: modelvault/generate.requested
+ * Event: spatialable/generate.requested
  * Data: { jobId: string, clientId: string }
  *
  * Steps:
@@ -24,7 +24,7 @@ export const generateModel = inngest.createFunction(
     id: 'generate-model',
     retries: 2,
   },
-  { event: 'modelvault/generate.requested' },
+  { event: 'spatialable/generate.requested' },
   async ({ event, step }) => {
     const { jobId } = event.data;
 

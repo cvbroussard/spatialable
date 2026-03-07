@@ -1,5 +1,5 @@
 /**
- * Create ModelVault Database Schema
+ * Create SpatialAble Database Schema
  *
  * Creates all tables, enums, and indexes in the Neon database.
  * Safe to re-run (uses IF NOT EXISTS / DO $$ ... END $$).
@@ -18,7 +18,7 @@ async function main() {
   }
 
   const sql = neon(process.env.DATABASE_URL);
-  console.log('Creating ModelVault database schema...\n');
+  console.log('Creating SpatialAble database schema...\n');
 
   // ── Enum types ──────────────────────────────────────────────────────────
   console.log('=== Enums ===');

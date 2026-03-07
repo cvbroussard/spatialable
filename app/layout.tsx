@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ModelVault",
-  description: "3D Product Asset Library Service",
+  title: "SpatialAble",
+  description: "Spatial Commerce Asset Library",
 };
 
 export default function RootLayout({

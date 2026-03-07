@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
 
     // Fire Inngest event to start pipeline
     await inngest.send({
-      name: 'modelvault/generate.requested',
+      name: 'spatialable/generate.requested',
       data: { jobId: job.id, clientId: guard.client.id },
     });
 
