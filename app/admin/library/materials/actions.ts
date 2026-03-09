@@ -56,11 +56,11 @@ export async function getMaterial(id: number) {
   const rows = await sql`SELECT * FROM materials WHERE id = ${id}`;
   if (rows.length === 0) return null;
 
-  // Count assets using this material
+  // Count generation jobs using this material
   const usage = await sql`
     SELECT COUNT(*)::int AS asset_count
-    FROM assets a
-    WHERE ${id} = ANY(a.matched_material_ids)
+    FROM generation_jobs j
+    WHERE ${id} = ANY(j.matched_material_ids)
   `;
 
   return { ...rows[0], asset_count: usage[0]?.asset_count || 0 };
