@@ -1,6 +1,6 @@
 'use server';
 
-import sql from '@/lib/db';
+import sql, { query } from '@/lib/db';
 import { inngest } from '@/lib/inngest/client';
 import type { SourceImage, BrandTarget, SourceFunnel, CurationStatus } from '@/lib/types';
 
@@ -51,12 +51,12 @@ export async function getSourceImages(filters: SourceImageFilters = {}) {
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
-  const countResult = await sql(
+  const countResult = await query(
     `SELECT COUNT(*)::int as total FROM source_images ${where}`,
     params,
   );
 
-  const rows = await sql(
+  const rows = await query(
     `SELECT * FROM source_images ${where} ORDER BY created_at DESC LIMIT $${paramIdx++} OFFSET $${paramIdx++}`,
     [...params, perPage, offset],
   );
@@ -104,7 +104,7 @@ export async function updateSourceImage(
   }
 
   params.push(id);
-  const result = await sql(
+  const result = await query(
     `UPDATE source_images SET ${setClauses.join(', ')} WHERE id = $${paramIdx} RETURNING *`,
     params,
   );
@@ -124,7 +124,7 @@ export async function bulkUpdateStatus(
 ) {
   if (ids.length === 0) return { updated: 0 };
 
-  const result = await sql(
+  const result = await query(
     `UPDATE source_images
      SET curation_status = $1,
          rejection_reason = $2,
@@ -149,7 +149,7 @@ export async function queueForGeneration(imageIds: number[]) {
   if (imageIds.length === 0) return { job_id: null };
 
   // Get the images
-  const images = await sql(
+  const images = await query(
     `SELECT * FROM source_images WHERE id = ANY($1) AND curation_status IN ('candidate', 'pending')`,
     [imageIds],
   );
@@ -182,7 +182,7 @@ export async function queueForGeneration(imageIds: number[]) {
   `;
 
   // Update source images to queued status and link to job
-  await sql(
+  await query(
     `UPDATE source_images
      SET curation_status = 'queued', generation_job_id = $1, updated_at = NOW()
      WHERE id = ANY($2)`,

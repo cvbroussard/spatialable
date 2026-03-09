@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import sql from '@/lib/db';
+import sql, { query } from '@/lib/db';
 import { requireAuth } from '@/lib/auth/api-key';
 
 export const dynamic = 'force-dynamic';
@@ -45,12 +45,12 @@ export async function GET(request: NextRequest) {
 
     const where = conditions.join(' AND ');
 
-    const [countRow] = await sql(
+    const [countRow] = await query(
       `SELECT COUNT(*)::int AS total FROM assets WHERE ${where}`,
       values,
     );
 
-    const assets = await sql(
+    const assets = await query(
       `SELECT id, specificity, status, upc, manufacturer_sku,
               glb_url, thumbnail_url, vertex_count, file_size_bytes,
               category_path, tags, created_at

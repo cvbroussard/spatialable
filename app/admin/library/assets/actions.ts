@@ -1,6 +1,6 @@
 'use server';
 
-import sql from '@/lib/db';
+import sql, { query } from '@/lib/db';
 
 export async function getAssets(filters: {
   status?: string;
@@ -31,12 +31,12 @@ export async function getAssets(filters: {
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   const offset = (page - 1) * per_page;
 
-  const countResult = await sql(
+  const countResult = await query(
     `SELECT COUNT(*)::int AS total FROM assets a ${where}`,
     params
   );
 
-  const rows = await sql(
+  const rows = await query(
     `SELECT a.*,
       (SELECT COUNT(*)::int FROM product_assets pa WHERE pa.asset_id = a.id) AS product_count
     FROM assets a

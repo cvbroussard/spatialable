@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import sql from '@/lib/db';
+import sql, { query } from '@/lib/db';
 import { requireAuth } from '@/lib/auth/api-key';
 
 export const dynamic = 'force-dynamic';
@@ -50,12 +50,12 @@ export async function GET(request: NextRequest) {
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
-    const [countRow] = await sql(
+    const [countRow] = await query(
       `SELECT COUNT(*)::int AS total FROM materials ${where}`,
       values,
     );
 
-    const materials = await sql(
+    const materials = await query(
       `SELECT * FROM materials ${where}
        ORDER BY material_type, name
        LIMIT $${paramIdx} OFFSET $${paramIdx + 1}`,

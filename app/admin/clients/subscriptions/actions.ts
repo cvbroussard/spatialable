@@ -1,6 +1,6 @@
 'use server';
 
-import sql from '@/lib/db';
+import sql, { query } from '@/lib/db';
 
 export async function getSubscriptions(filters: {
   tier?: string;
@@ -26,12 +26,12 @@ export async function getSubscriptions(filters: {
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   const offset = (page - 1) * per_page;
 
-  const countResult = await sql(
+  const countResult = await query(
     `SELECT COUNT(*)::int AS total FROM subscriptions s ${where}`,
     params
   );
 
-  const rows = await sql(
+  const rows = await query(
     `SELECT s.*, c.name AS client_name
     FROM subscriptions s
     LEFT JOIN clients c ON c.id = s.client_id
