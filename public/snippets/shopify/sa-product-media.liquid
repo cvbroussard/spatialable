@@ -1,0 +1,17 @@
+{% comment %}
+  SpatialAble Product Media — Gallery
+  Drop into product template to replace default media gallery.
+  Falls back to native Shopify media if no SpatialAble asset is matched.
+{% endcomment %}
+
+{% if product.metafields.spatialable.asset_id %}
+  <sa-media
+    token="{{ shop.metafields.spatialable.token }}"
+    product-id="{{ product.metafields.spatialable.asset_id }}"
+    product-type="gallery"
+    style="width:100%;aspect-ratio:1"
+  ></sa-media>
+{% else %}
+  {% comment %} Fallback to native Shopify media {% endcomment %}
+  {% render 'product-media-gallery' %}
+{% endif %}

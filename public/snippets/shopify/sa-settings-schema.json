@@ -1,0 +1,11 @@
+{
+  "name": "SpatialAble",
+  "settings": [
+    {
+      "type": "text",
+      "id": "spatialable_token",
+      "label": "Subscription Token",
+      "info": "Your SpatialAble sk_live_* subscription token. Found in your SpatialAble dashboard."
+    }
+  ]
+}

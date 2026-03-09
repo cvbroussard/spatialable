@@ -1,0 +1,13 @@
+{% comment %}
+  SpatialAble Hero Image
+  Simple single-image product hero. Use in collection grids or PDP.
+{% endcomment %}
+
+{% if product.metafields.spatialable.asset_id %}
+  <sa-media
+    token="{{ shop.metafields.spatialable.token }}"
+    product-id="{{ product.metafields.spatialable.asset_id }}"
+    product-type="hero"
+    style="width:100%;aspect-ratio:1"
+  ></sa-media>
+{% endif %}

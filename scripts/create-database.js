@@ -93,6 +93,7 @@ async function main() {
       name TEXT NOT NULL,
       material_type TEXT NOT NULL,
       source material_source NOT NULL DEFAULT 'custom',
+      external_id TEXT UNIQUE,
       albedo_url TEXT,
       normal_url TEXT,
       roughness_url TEXT,
@@ -160,6 +161,262 @@ async function main() {
   await sql`CREATE INDEX IF NOT EXISTS idx_jobs_status ON generation_jobs(status)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_jobs_meshy ON generation_jobs(meshy_task_id) WHERE meshy_task_id IS NOT NULL`;
   console.log('  + generation_jobs');
+
+  // ── Source image curation enums ──────────────────────────────────────────
+
+  await sql`DO $$ BEGIN
+    CREATE TYPE source_funnel AS ENUM (
+      'brand_pull', 'library', 'web_search', 'ai_generated', 'partner'
+    );
+  EXCEPTION WHEN duplicate_object THEN NULL; END $$`;
+  console.log('  + source_funnel');
+
+  await sql`DO $$ BEGIN
+    CREATE TYPE curation_status AS ENUM (
+      'pending', 'candidate', 'queued', 'generating', 'rejected'
+    );
+  EXCEPTION WHEN duplicate_object THEN NULL; END $$`;
+  console.log('  + curation_status');
+
+  await sql`DO $$ BEGIN
+    CREATE TYPE survey_status AS ENUM (
+      'targeting', 'surveying', 'pulling', 'curating', 'complete'
+    );
+  EXCEPTION WHEN duplicate_object THEN NULL; END $$`;
+  console.log('  + survey_status');
+
+  // ── Source image curation tables ────────────────────────────────────────
+
+  // Brand targets
+  await sql`
+    CREATE TABLE IF NOT EXISTS brand_targets (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      brand_name TEXT NOT NULL,
+      website_url TEXT,
+      status survey_status NOT NULL DEFAULT 'targeting',
+      notes TEXT,
+      image_count INT NOT NULL DEFAULT 0,
+      candidate_count INT NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+  console.log('  + brand_targets');
+
+  // Source images
+  await sql`
+    CREATE TABLE IF NOT EXISTS source_images (
+      id SERIAL PRIMARY KEY,
+      image_url TEXT NOT NULL,
+      original_url TEXT,
+      thumbnail_url TEXT,
+      funnel source_funnel NOT NULL,
+      curation_status curation_status NOT NULL DEFAULT 'pending',
+      brand_target_id INT REFERENCES brand_targets(id),
+      product_name TEXT,
+      category TEXT,
+      upc TEXT,
+      sku TEXT,
+      description TEXT,
+      width INT,
+      height INT,
+      file_size_bytes INT,
+      content_type TEXT,
+      quality_score REAL,
+      background_type TEXT,
+      angle TEXT,
+      material_hints JSONB DEFAULT '[]',
+      rejection_reason TEXT,
+      product_group TEXT,
+      generation_job_id UUID REFERENCES generation_jobs(id),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_source_images_funnel ON source_images(funnel)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_source_images_status ON source_images(curation_status)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_source_images_brand ON source_images(brand_target_id) WHERE brand_target_id IS NOT NULL`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_source_images_group ON source_images(product_group) WHERE product_group IS NOT NULL`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_source_images_category ON source_images(category) WHERE category IS NOT NULL`;
+  console.log('  + source_images');
+
+  // ── Embed delivery ─────────────────────────────────────────────────────
+
+  await sql`DO $$ BEGIN
+    CREATE TYPE subscription_tier AS ENUM ('base', 'standard', 'premium');
+  EXCEPTION WHEN duplicate_object THEN NULL; END $$`;
+  console.log('  + subscription_tier');
+
+  // Style profiles
+  await sql`
+    CREATE TABLE IF NOT EXISTS style_profiles (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      primary_color TEXT,
+      secondary_color TEXT,
+      accent_color TEXT,
+      font_family TEXT,
+      font_url TEXT,
+      border_radius TEXT,
+      background_color TEXT,
+      text_color TEXT,
+      custom_vars JSONB DEFAULT '{}',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+  console.log('  + style_profiles');
+
+  // Subscriptions
+  await sql`
+    CREATE TABLE IF NOT EXISTS subscriptions (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      client_id UUID NOT NULL REFERENCES clients(id),
+      token_prefix TEXT NOT NULL,
+      token_hash TEXT NOT NULL UNIQUE,
+      tier subscription_tier NOT NULL DEFAULT 'base',
+      domain_whitelist TEXT[] DEFAULT '{}',
+      style_profile_id INT REFERENCES style_profiles(id),
+      is_active BOOLEAN NOT NULL DEFAULT true,
+      impression_limit INT,
+      impressions_used INT NOT NULL DEFAULT 0,
+      billing_period_start TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      expires_at TIMESTAMPTZ
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_subscriptions_client ON subscriptions(client_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_subscriptions_active ON subscriptions(is_active) WHERE is_active = true`;
+  console.log('  + subscriptions');
+
+  // ── Product asset ordering ───────────────────────────────────────────────
+
+  await sql`DO $$ BEGIN
+    CREATE TYPE asset_role AS ENUM (
+      'hero', 'gallery', 'detail', 'lifestyle', 'video', 'model'
+    );
+  EXCEPTION WHEN duplicate_object THEN NULL; END $$`;
+  console.log('  + asset_role');
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS product_assets (
+      id SERIAL PRIMARY KEY,
+      product_ref TEXT NOT NULL,
+      asset_id UUID REFERENCES assets(id),
+      role asset_role NOT NULL,
+      position INT NOT NULL,
+      content_type TEXT,
+      url TEXT NOT NULL,
+      alt TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(product_ref, position),
+      UNIQUE(product_ref, asset_id, role)
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_product_assets_ref ON product_assets(product_ref)`;
+  console.log('  + product_assets');
+
+  // ── Shopify integration ───────────────────────────────────────────────────
+
+  await sql`DO $$ BEGIN
+    CREATE TYPE shopify_store_status AS ENUM ('pending', 'active', 'paused', 'disconnected');
+  EXCEPTION WHEN duplicate_object THEN NULL; END $$`;
+  console.log('  + shopify_store_status');
+
+  await sql`DO $$ BEGIN
+    CREATE TYPE shopify_match_type AS ENUM ('upc', 'sku', 'vendor_type', 'form_factor', 'none');
+  EXCEPTION WHEN duplicate_object THEN NULL; END $$`;
+  console.log('  + shopify_match_type');
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS shopify_stores (
+      id SERIAL PRIMARY KEY,
+      client_id UUID NOT NULL REFERENCES clients(id),
+      subscription_id UUID REFERENCES subscriptions(id),
+      shop_domain TEXT NOT NULL UNIQUE,
+      access_token_encrypted TEXT NOT NULL,
+      access_token_iv TEXT NOT NULL,
+      scopes TEXT[] DEFAULT '{}',
+      status shopify_store_status NOT NULL DEFAULT 'pending',
+      webhook_secret TEXT,
+      last_sync_at TIMESTAMPTZ,
+      product_count INT NOT NULL DEFAULT 0,
+      matched_count INT NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_shopify_stores_client ON shopify_stores(client_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_shopify_stores_status ON shopify_stores(status)`;
+  console.log('  + shopify_stores');
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS shopify_products (
+      id SERIAL PRIMARY KEY,
+      store_id INT NOT NULL REFERENCES shopify_stores(id),
+      shopify_product_id BIGINT NOT NULL,
+      shopify_variant_id BIGINT,
+      title TEXT NOT NULL,
+      vendor TEXT,
+      product_type TEXT,
+      handle TEXT,
+      upc TEXT,
+      sku TEXT,
+      image_url TEXT,
+      status TEXT NOT NULL DEFAULT 'active',
+      synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(store_id, shopify_product_id)
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_shopify_products_store ON shopify_products(store_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_shopify_products_upc ON shopify_products(upc) WHERE upc IS NOT NULL`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_shopify_products_sku ON shopify_products(sku) WHERE sku IS NOT NULL`;
+  console.log('  + shopify_products');
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS shopify_matches (
+      id SERIAL PRIMARY KEY,
+      shopify_product_id INT NOT NULL REFERENCES shopify_products(id) UNIQUE,
+      asset_id UUID REFERENCES assets(id),
+      match_type shopify_match_type NOT NULL DEFAULT 'none',
+      match_confidence NUMERIC(3,2) NOT NULL DEFAULT 0.0,
+      metafield_written BOOLEAN NOT NULL DEFAULT false,
+      metafield_written_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_shopify_matches_asset ON shopify_matches(asset_id) WHERE asset_id IS NOT NULL`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_shopify_matches_type ON shopify_matches(match_type)`;
+  console.log('  + shopify_matches');
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS shopify_taxonomy_map (
+      id SERIAL PRIMARY KEY,
+      shopify_type TEXT NOT NULL UNIQUE,
+      category_path TEXT NOT NULL,
+      form_factor_id INT REFERENCES form_factors(id),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+  console.log('  + shopify_taxonomy_map');
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS shopify_sync_log (
+      id SERIAL PRIMARY KEY,
+      store_id INT NOT NULL REFERENCES shopify_stores(id),
+      event_type TEXT NOT NULL,
+      shopify_product_id BIGINT,
+      details JSONB DEFAULT '{}',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_shopify_sync_log_store ON shopify_sync_log(store_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_shopify_sync_log_event ON shopify_sync_log(event_type)`;
+  console.log('  + shopify_sync_log');
 
   // Asset usage
   await sql`

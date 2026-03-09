@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SpatialAble Embed Demo</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #fafafa;
+      color: #1a1a1a;
+      padding: 40px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    h1 { font-size: 24px; margin-bottom: 8px; }
+    .subtitle { color: #666; margin-bottom: 32px; font-size: 14px; }
+    h2 { font-size: 18px; margin: 32px 0 16px; }
+    .demo-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+      gap: 24px;
+    }
+    .demo-card {
+      background: #fff;
+      border: 1px solid #e5e5e5;
+      border-radius: 12px;
+      padding: 20px;
+      overflow: hidden;
+    }
+    .demo-card h3 {
+      font-size: 14px;
+      color: #666;
+      margin-bottom: 12px;
+    }
+    .demo-card sa-media {
+      width: 100%;
+      border-radius: 8px;
+    }
+    pre {
+      background: #f5f5f5;
+      border: 1px solid #e5e5e5;
+      border-radius: 8px;
+      padding: 16px;
+      font-size: 13px;
+      overflow-x: auto;
+      margin: 16px 0;
+      line-height: 1.6;
+    }
+    code { font-family: 'SF Mono', Menlo, Monaco, monospace; }
+    .config-panel {
+      background: #fff;
+      border: 1px solid #e5e5e5;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 24px;
+    }
+    .config-panel label { display: block; font-size: 13px; color: #666; margin-bottom: 4px; }
+    .config-panel input {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 14px;
+      font-family: monospace;
+      margin-bottom: 12px;
+    }
+    .config-panel button {
+      padding: 8px 16px;
+      background: #1a1a1a;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .config-panel button:hover { background: #333; }
+    .status { font-size: 12px; color: #999; margin-top: 8px; }
+  </style>
+
+  <!-- SpatialAble Embed Loader -->
+  <script>
+    // Set API base before loader runs
+    window.__SA_CONFIG__ = {
+      apiBase: 'http://localhost:3000'
+    };
+  </script>
+  <script src="http://localhost:3000/embed/loader.js"></script>
+</head>
+<body>
+  <h1>SpatialAble Embed Demo</h1>
+  <p class="subtitle">Testing the &lt;sa-media&gt; web component with live API endpoints</p>
+
+  <!-- Config Panel -->
+  <div class="config-panel">
+    <label for="token-input">Subscription Token</label>
+    <input type="text" id="token-input" placeholder="sk_live_..." value="">
+    <label for="api-input">API Base</label>
+    <input type="text" id="api-input" value="http://localhost:3000">
+    <button onclick="applyConfig()">Apply & Reload Components</button>
+    <div class="status" id="config-status"></div>
+  </div>
+
+  <h2>Static Snippets</h2>
+  <div class="demo-grid">
+    <div class="demo-card">
+      <h3>Static Asset (by reference)</h3>
+      <sa-media id="demo-static" asset="lifestyle-modern-living-01"></sa-media>
+    </div>
+  </div>
+
+  <h2>Dynamic Snippets — Product Types</h2>
+  <div class="demo-grid">
+    <div class="demo-card">
+      <h3>Hero (single image)</h3>
+      <sa-media id="demo-hero" product-type="hero"></sa-media>
+    </div>
+    <div class="demo-card">
+      <h3>Gallery (mixed media carousel)</h3>
+      <sa-media id="demo-gallery" product-type="gallery"></sa-media>
+    </div>
+  </div>
+
+  <h2>Snippet Examples</h2>
+  <pre><code>&lt;!-- Static snippet --&gt;
+&lt;sa-media token="sk_live_xxx" asset="lifestyle-modern-living-01" /&gt;
+
+&lt;!-- Dynamic: hero --&gt;
+&lt;sa-media token="sk_live_xxx" product-id="{{product.upc}}" product-type="hero" /&gt;
+
+&lt;!-- Dynamic: gallery --&gt;
+&lt;sa-media token="sk_live_xxx" product-id="{{product.upc}}" product-type="gallery" /&gt;
+
+&lt;!-- Dynamic: configurator (premium tier) --&gt;
+&lt;sa-media token="sk_live_xxx" product-id="{{product.upc}}" product-type="configurator" /&gt;</code></pre>
+
+  <h2>Shadow DOM Inspection</h2>
+  <p style="font-size: 14px; color: #666; margin-bottom: 16px;">
+    Open DevTools and try to inspect the &lt;sa-media&gt; elements above.
+    The Shadow DOM is <strong>closed</strong> — external JavaScript cannot access the shadow root,
+    and external CSS cannot style the component internals.
+  </p>
+
+  <script>
+    function applyConfig() {
+      const token = document.getElementById('token-input').value.trim();
+      const apiBase = document.getElementById('api-input').value.trim();
+      const status = document.getElementById('config-status');
+
+      if (!token) {
+        status.textContent = 'Token required. Use: node scripts/create-subscription.js';
+        status.style.color = '#e53e3e';
+        return;
+      }
+
+      // Update all sa-media elements
+      document.querySelectorAll('sa-media').forEach(el => {
+        el.setAttribute('token', token);
+        if (apiBase) el.setAttribute('api-base', apiBase);
+      });
+
+      // Set a test product-id on dynamic elements
+      document.getElementById('demo-hero')?.setAttribute('product-id', 'test-product');
+      document.getElementById('demo-gallery')?.setAttribute('product-id', 'test-product');
+
+      status.textContent = `Applied token ${token.slice(0, 16)}... — check Network tab for API calls`;
+      status.style.color = '#38a169';
+    }
+  </script>
+</body>
+</html>
