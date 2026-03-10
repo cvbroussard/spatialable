@@ -448,3 +448,38 @@ export interface EditorialAsset {
   created_at: string;
   updated_at: string;
 }
+
+// ---------------------------------------------------------------------------
+// Image generation (AI product photography)
+// ---------------------------------------------------------------------------
+
+export type ImageGenStatus = 'queued' | 'generating' | 'uploading' | 'complete' | 'failed';
+
+export type ImageGenSeries = 'studio_angles';
+
+export interface ImageGenResult {
+  angle: string;
+  url: string;
+  thumbnailUrl: string;
+  sourceImageId: number;
+  productAssetId: number;
+}
+
+export interface ImageGenJob {
+  id: string;
+  gtin: string;
+  client_id: string;
+  status: ImageGenStatus;
+  series: ImageGenSeries;
+  model_used: string | null;
+  source_prompt: string;
+  source_refs: string[];
+  total_images: number;
+  completed_images: number;
+  results: ImageGenResult[];
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+}

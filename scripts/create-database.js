@@ -460,6 +460,45 @@ async function main() {
   await sql`CREATE INDEX IF NOT EXISTS idx_swatch_jobs_material ON swatch_jobs(material_id) WHERE material_id IS NOT NULL`;
   console.log('  + swatch_jobs');
 
+  // ── Image generation pipeline ─────────────────────────────────────────
+
+  await sql`DO $$ BEGIN
+    CREATE TYPE image_gen_status AS ENUM (
+      'queued', 'generating', 'uploading', 'complete', 'failed'
+    );
+  EXCEPTION WHEN duplicate_object THEN NULL; END $$`;
+  console.log('  + image_gen_status');
+
+  await sql`DO $$ BEGIN
+    CREATE TYPE image_gen_series AS ENUM ('studio_angles');
+  EXCEPTION WHEN duplicate_object THEN NULL; END $$`;
+  console.log('  + image_gen_series');
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS image_gen_jobs (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      gtin TEXT NOT NULL,
+      client_id UUID NOT NULL REFERENCES clients(id),
+      status image_gen_status NOT NULL DEFAULT 'queued',
+      series image_gen_series NOT NULL DEFAULT 'studio_angles',
+      model_used TEXT,
+      source_prompt TEXT NOT NULL,
+      source_refs TEXT[] DEFAULT '{}',
+      total_images INT NOT NULL DEFAULT 10,
+      completed_images INT NOT NULL DEFAULT 0,
+      results JSONB NOT NULL DEFAULT '[]',
+      error TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      started_at TIMESTAMPTZ,
+      completed_at TIMESTAMPTZ
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_image_gen_jobs_gtin ON image_gen_jobs(gtin)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_image_gen_jobs_status ON image_gen_jobs(status)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_image_gen_jobs_client ON image_gen_jobs(client_id)`;
+  console.log('  + image_gen_jobs');
+
   // Asset usage
   await sql`
     CREATE TABLE IF NOT EXISTS asset_usage (
