@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { getMaterials, getMaterial, getFilterOptions } from './actions';
 
 interface MaterialRow {
@@ -100,9 +101,17 @@ export function MaterialsClient() {
     <div className="flex gap-6 h-[calc(100vh-8rem)]">
       {/* Left — grid */}
       <div className="flex-1 flex flex-col min-w-0">
-        <div className="mb-4">
-          <h1 className="text-2xl font-bold text-zinc-900">Materials</h1>
-          <p className="text-sm text-zinc-500 mt-1">{total} PBR material{total !== 1 ? 's' : ''}</p>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h1 className="text-2xl font-bold text-zinc-900">Materials</h1>
+            <p className="text-sm text-zinc-500 mt-1">{total} PBR material{total !== 1 ? 's' : ''}</p>
+          </div>
+          <Link
+            href="/admin/library/swatch-jobs"
+            className="rounded-lg bg-zinc-900 px-4 py-2 text-xs font-medium text-white hover:bg-zinc-800"
+          >
+            Upload Swatch
+          </Link>
         </div>
 
         {/* Filters */}

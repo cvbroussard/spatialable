@@ -36,11 +36,12 @@ export async function getUsageStats() {
       a.category_path,
       a.specificity,
       a.upc,
+      a.gtin,
       a.manufacturer_sku,
       COUNT(pa.id)::int AS assignment_count
     FROM assets a
     JOIN product_assets pa ON pa.asset_id = a.id
-    GROUP BY a.id, a.thumbnail_url, a.category_path, a.specificity, a.upc, a.manufacturer_sku
+    GROUP BY a.id, a.thumbnail_url, a.category_path, a.specificity, a.upc, a.gtin, a.manufacturer_sku
     ORDER BY assignment_count DESC
     LIMIT 20
   `;

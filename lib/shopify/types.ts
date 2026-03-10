@@ -46,7 +46,7 @@ export interface ShopifyMetafieldResponse {
 export interface MatchResult {
   shopifyProductId: number; // shopify_products.id (internal)
   assetId: string | null;
-  matchType: 'upc' | 'sku' | 'vendor_type' | 'form_factor' | 'none';
+  matchType: 'upc' | 'sku' | 'vendor_type' | 'form_factor' | 'gtin' | 'none';
   matchConfidence: number;
 }
 

@@ -533,7 +533,7 @@ export function CurateClient() {
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-[10px] text-zinc-400 mb-1">UPC</label>
+                  <label className="block text-[10px] text-zinc-400 mb-1">GTIN / UPC</label>
                   <input
                     type="text"
                     value={editUpc}

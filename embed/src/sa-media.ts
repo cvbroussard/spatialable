@@ -1,33 +1,23 @@
 // ---------------------------------------------------------------------------
-// <sa-media> Custom Element — core component
+// <sa-media> Custom Element — thin shell
 //
-// A piracy-protected media renderer with closed Shadow DOM.
-// Authenticates via subscription token, loads style profiles,
-// resolves assets via signed URLs, renders into an isolated shadow tree.
+// Fetches server-rendered HTML, mounts into closed Shadow DOM,
+// hydrates signed URLs to blob URLs (anti-piracy), injects SEO
+// content into Light DOM, and initializes interaction handlers.
 // ---------------------------------------------------------------------------
 
-import { initSubscription, resolveAsset, reportImpressions, setApiBase, getApiBase } from './api-client';
-import { BASE_STYLES, buildStyleVars } from './styles';
-import { renderHero } from './renderers/hero';
-import { renderGallery } from './renderers/gallery';
-import type { InitResponse, ResolveResponse, StyleProfile } from './types';
+import { resolveAsset, reportImpressions, setApiBase } from './api-client';
+import { LOADING_STYLES } from './styles';
+import { hydrateShadowDom } from './hydrate';
+import { injectSeoContent } from './seo';
+import { initGalleryInteractions } from './interactions';
 
 // ---------------------------------------------------------------------------
-// Module-level caches (shared across all <sa-media> instances)
+// Impression batch queue (shared across all <sa-media> instances)
 // ---------------------------------------------------------------------------
 
-interface CachedInit {
-  data: InitResponse;
-  cached_at: number;
-}
-
-const INIT_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-const initCache = new Map<string, CachedInit>();
-const initPromises = new Map<string, Promise<InitResponse>>();
-
-// Impression batch queue
 let impressionQueue: Array<{ asset_id: string; product_ref?: string; type?: string }> = [];
-let impressionToken: string = '';
+let impressionToken = '';
 let impressionTimer: ReturnType<typeof setTimeout> | null = null;
 
 function queueImpression(token: string, assetId: string, productRef?: string, type?: string) {
@@ -55,44 +45,18 @@ if (typeof window !== 'undefined') {
   });
 }
 
-/**
- * Get init data for a token (cached, deduped).
- */
-async function getInit(token: string): Promise<InitResponse> {
-  const cached = initCache.get(token);
-  if (cached && Date.now() - cached.cached_at < INIT_CACHE_TTL) {
-    return cached.data;
-  }
-
-  // Deduplicate concurrent init requests
-  const pending = initPromises.get(token);
-  if (pending) return pending;
-
-  const promise = initSubscription(token).then((data) => {
-    initPromises.delete(token);
-    if (data.valid) {
-      initCache.set(token, { data, cached_at: Date.now() });
-    }
-    return data;
-  }).catch((err) => {
-    initPromises.delete(token);
-    return { valid: false, tier: '', style_profile: null, config: { allowed_types: [], impression_remaining: null }, error: String(err) } as InitResponse;
-  });
-
-  initPromises.set(token, promise);
-  return promise;
-}
-
 // ---------------------------------------------------------------------------
 // <sa-media> Custom Element
 // ---------------------------------------------------------------------------
 
 export class SaMedia extends HTMLElement {
-  static observedAttributes = ['token', 'asset', 'product-id', 'product-type', 'api-base'];
+  static observedAttributes = [
+    'token', 'product-ref', 'product-id', 'product-type',
+    'page-type', 'collection-ref', 'api-base',
+  ];
 
   #shadow: ShadowRoot;
   #container: HTMLElement;
-  #styleEl: HTMLStyleElement;
   #resolved = false;
   #abortController: AbortController | null = null;
   #observer: IntersectionObserver | null = null;
@@ -101,10 +65,10 @@ export class SaMedia extends HTMLElement {
     super();
     this.#shadow = this.attachShadow({ mode: 'closed' });
 
-    // Base stylesheet
-    this.#styleEl = document.createElement('style');
-    this.#styleEl.textContent = BASE_STYLES;
-    this.#shadow.appendChild(this.#styleEl);
+    // Minimal loading styles (server bakes full styles into HTML)
+    const style = document.createElement('style');
+    style.textContent = LOADING_STYLES;
+    this.#shadow.appendChild(style);
 
     // Content container
     this.#container = document.createElement('div');
@@ -113,10 +77,10 @@ export class SaMedia extends HTMLElement {
   }
 
   connectedCallback() {
-    // Show loading state
+    // Show loading skeleton
     this.#container.innerHTML = '<div class="sa-loading"></div>';
 
-    // Set up lazy loading via IntersectionObserver
+    // Lazy load via IntersectionObserver
     this.#observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
@@ -142,8 +106,8 @@ export class SaMedia extends HTMLElement {
     if (name === 'api-base' && _val) {
       setApiBase(_val);
     }
-    // Re-resolve if attributes change after initial render
-    if (this.#resolved && (name === 'asset' || name === 'product-id' || name === 'product-type')) {
+    // Re-resolve if content attributes change after initial render
+    if (this.#resolved && ['product-ref', 'product-id', 'product-type', 'page-type', 'collection-ref'].includes(name)) {
       this.#resolved = false;
       this.#resolve();
     }
@@ -151,94 +115,61 @@ export class SaMedia extends HTMLElement {
 
   async #resolve() {
     const token = this.getAttribute('token');
-    if (!token) {
-      this.#renderError('Missing token');
-      return;
-    }
+    if (!token) return;
 
-    // Check for api-base override
     const apiBaseAttr = this.getAttribute('api-base');
-    if (apiBaseAttr) {
-      setApiBase(apiBaseAttr);
-    }
+    if (apiBaseAttr) setApiBase(apiBaseAttr);
 
     this.#abortController?.abort();
     this.#abortController = new AbortController();
 
     try {
-      // 1. Init (validates token, gets style profile)
-      const init = await getInit(token);
-      if (!init.valid) {
-        this.#renderError(init.error || 'Invalid subscription');
-        return;
-      }
-
-      // 2. Apply style profile
-      if (init.style_profile) {
-        this.#applyStyleProfile(init.style_profile);
-      }
-
-      // Load custom font if specified
-      if (init.style_profile?.font_url) {
-        this.#loadFont(init.style_profile.font_url);
-      }
-
-      // 3. Resolve assets
-      const asset = this.getAttribute('asset');
-      const productId = this.getAttribute('product-id');
-      const productType = this.getAttribute('product-type') || 'hero';
-
-      const resolve = await resolveAsset({
+      // Single API call — server returns rendered HTML
+      const result = await resolveAsset({
         token,
-        asset: asset || undefined,
-        productId: productId || undefined,
-        productType: productType,
+        productRef: this.getAttribute('product-ref') || this.getAttribute('product-id') || undefined,
+        productType: this.getAttribute('product-type') || undefined,
+        pageType: this.getAttribute('page-type') || undefined,
+        collectionRef: this.getAttribute('collection-ref') || undefined,
+        signal: this.#abortController.signal,
       });
 
-      if (!resolve.resolved || resolve.assets.length === 0) {
-        this.#renderError('No media found');
+      if (!result.html) {
+        // No assets — leave <slot> visible for retailer fallback
+        this.#container.innerHTML = '<slot></slot>';
         return;
       }
 
       this.#resolved = true;
 
-      // 4. Render
-      if (productType === 'gallery' && resolve.assets.length > 1) {
-        await renderGallery(this.#container, resolve.assets);
-      } else {
-        this.#container.innerHTML = '';
-        await renderHero(this.#container, resolve.assets[0]);
+      // Mount server-rendered HTML into Shadow DOM
+      this.#container.innerHTML = result.html;
+
+      // Inject SEO content into Light DOM (hidden thumbnail + JSON-LD)
+      if (result.seo) {
+        injectSeoContent(this, result.seo);
       }
 
-      // 5. Queue impression
-      const primaryAsset = resolve.assets[0];
-      queueImpression(token, primaryAsset.id, productId || asset || undefined, productType);
+      // Hydrate: data-sa-src → blob URLs (anti-piracy)
+      await hydrateShadowDom(this.#container);
 
+      // Initialize gallery interactions (click/keyboard navigation)
+      initGalleryInteractions(this.#container);
+
+      // Queue impressions from asset manifest
+      for (const asset of result.assets) {
+        queueImpression(
+          token,
+          asset.id,
+          this.getAttribute('product-ref') || this.getAttribute('product-id') || undefined,
+          asset.type,
+        );
+      }
     } catch (err) {
       if ((err as Error).name === 'AbortError') return;
-      this.#renderError('Failed to load media');
+      // On error, show slot fallback
+      this.#container.innerHTML = '<slot></slot>';
       console.error('[sa-media]', err);
     }
-  }
-
-  #applyStyleProfile(profile: StyleProfile) {
-    const vars = buildStyleVars(profile);
-    if (vars) {
-      this.#styleEl.textContent = BASE_STYLES + `\n:host { ${vars} }`;
-    }
-  }
-
-  #loadFont(fontUrl: string) {
-    // Inject font link into document head (outside shadow DOM — fonts are global)
-    if (!document.querySelector(`link[href="${fontUrl}"]`)) {
-      const link = document.createElement('link');
-      link.rel = 'stylesheet';
-      link.href = fontUrl;
-      document.head.appendChild(link);
-    }
-  }
-
-  #renderError(message: string) {
-    this.#container.innerHTML = `<div class="sa-error">${message}</div>`;
   }
 }

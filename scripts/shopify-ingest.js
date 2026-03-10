@@ -15,6 +15,37 @@ require('dotenv').config({ path: '.env.local' });
 
 const API_VERSION = '2024-10';
 
+// ---------------------------------------------------------------------------
+// Inline GTIN validation (CJS — can't import from lib/gtin.ts)
+// ---------------------------------------------------------------------------
+
+function calculateCheckDigit(digitsWithoutCheck) {
+  let sum = 0;
+  for (let i = digitsWithoutCheck.length - 1; i >= 0; i--) {
+    const d = parseInt(digitsWithoutCheck[i], 10);
+    const weight = (digitsWithoutCheck.length - 1 - i) % 2 === 0 ? 3 : 1;
+    sum += d * weight;
+  }
+  return (10 - (sum % 10)) % 10;
+}
+
+function validateCheckDigit(digits) {
+  if (digits.length < 2) return false;
+  const data = digits.slice(0, -1);
+  const check = parseInt(digits[digits.length - 1], 10);
+  return calculateCheckDigit(data) === check;
+}
+
+const GTIN_LENGTHS = new Set([8, 12, 13, 14]);
+
+function normalizeGtin(input) {
+  const cleaned = (input || '').trim().replace(/[-\s]/g, '');
+  if (!/^\d+$/.test(cleaned)) return null;
+  if (!GTIN_LENGTHS.has(cleaned.length)) return null;
+  if (!validateCheckDigit(cleaned)) return null;
+  return cleaned.padStart(14, '0');
+}
+
 function parseArgs() {
   const args = process.argv.slice(2);
   const opts = { dryRun: false };
@@ -109,6 +140,8 @@ async function main() {
 
   for (const sp of shopifyProducts) {
     const primaryVariant = sp.variants?.[0];
+    const barcode = primaryVariant?.barcode || null;
+    const gtin = barcode ? normalizeGtin(barcode) : null;
     const row = {
       store_id: store.id,
       shopify_product_id: sp.id,
@@ -117,7 +150,8 @@ async function main() {
       vendor: sp.vendor || null,
       product_type: sp.product_type || null,
       handle: sp.handle,
-      upc: primaryVariant?.barcode || null,
+      upc: barcode,
+      gtin,
       sku: primaryVariant?.sku || null,
       image_url: sp.images?.[0]?.src || null,
       status: sp.status,
@@ -127,11 +161,11 @@ async function main() {
       const [inserted] = await sql`
         INSERT INTO shopify_products (
           store_id, shopify_product_id, shopify_variant_id,
-          title, vendor, product_type, handle, upc, sku, image_url, status, synced_at
+          title, vendor, product_type, handle, upc, gtin, sku, image_url, status, synced_at
         ) VALUES (
           ${row.store_id}, ${row.shopify_product_id}, ${row.shopify_variant_id},
           ${row.title}, ${row.vendor}, ${row.product_type}, ${row.handle},
-          ${row.upc}, ${row.sku}, ${row.image_url}, ${row.status}, NOW()
+          ${row.upc}, ${row.gtin}, ${row.sku}, ${row.image_url}, ${row.status}, NOW()
         )
         ON CONFLICT (store_id, shopify_product_id) DO UPDATE SET
           shopify_variant_id = EXCLUDED.shopify_variant_id,
@@ -140,11 +174,12 @@ async function main() {
           product_type = EXCLUDED.product_type,
           handle = EXCLUDED.handle,
           upc = EXCLUDED.upc,
+          gtin = EXCLUDED.gtin,
           sku = EXCLUDED.sku,
           image_url = EXCLUDED.image_url,
           status = EXCLUDED.status,
           synced_at = NOW()
-        RETURNING id, upc, sku, vendor, product_type
+        RETURNING id, upc, gtin, sku, vendor, product_type
       `;
       productRows.push(inserted);
     } else {
@@ -156,18 +191,25 @@ async function main() {
 
   // 5. Run matching cascade
   console.log('\n  Running matching cascade...');
-  const matchCounts = { upc: 0, sku: 0, vendor_type: 0, form_factor: 0, none: 0 };
+  const matchCounts = { gtin: 0, upc: 0, sku: 0, vendor_type: 0, form_factor: 0, none: 0 };
 
   if (!opts.dryRun) {
+    // Tier 0: Bulk GTIN match
+    const gtins = productRows.filter((p) => p.gtin).map((p) => p.gtin);
+    const gtinAssets = gtins.length > 0
+      ? await sql`SELECT id, gtin FROM assets WHERE gtin = ANY(${gtins}) AND status = 'approved'`
+      : [];
+    const gtinMap = new Map(gtinAssets.map((a) => [a.gtin, a.id]));
+
     // Tier 1: Bulk UPC match
-    const upcs = productRows.filter((p) => p.upc).map((p) => p.upc);
+    const upcs = productRows.filter((p) => p.upc && !gtinMap.has(p.gtin)).map((p) => p.upc);
     const upcAssets = upcs.length > 0
       ? await sql`SELECT id, upc FROM assets WHERE upc = ANY(${upcs}) AND status = 'approved'`
       : [];
     const upcMap = new Map(upcAssets.map((a) => [a.upc, a.id]));
 
     // Tier 2: Bulk SKU match
-    const skus = productRows.filter((p) => p.sku && !upcMap.has(p.upc)).map((p) => p.sku);
+    const skus = productRows.filter((p) => p.sku && !gtinMap.has(p.gtin) && !upcMap.has(p.upc)).map((p) => p.sku);
     const skuAssets = skus.length > 0
       ? await sql`SELECT id, manufacturer_sku FROM assets WHERE manufacturer_sku = ANY(${skus}) AND status = 'approved'`
       : [];
@@ -185,8 +227,14 @@ async function main() {
       let matchConfidence = 0.0;
       let assetId = null;
 
+      // Tier 0: GTIN
+      if (product.gtin && gtinMap.has(product.gtin)) {
+        assetId = gtinMap.get(product.gtin);
+        matchType = 'gtin';
+        matchConfidence = 1.0;
+      }
       // Tier 1: UPC
-      if (product.upc && upcMap.has(product.upc)) {
+      else if (product.upc && upcMap.has(product.upc)) {
         assetId = upcMap.get(product.upc);
         matchType = 'upc';
         matchConfidence = 1.0;
@@ -251,7 +299,7 @@ async function main() {
     }
 
     // 6. Update store counts
-    const totalMatched = matchCounts.upc + matchCounts.sku + matchCounts.vendor_type + matchCounts.form_factor;
+    const totalMatched = matchCounts.gtin + matchCounts.upc + matchCounts.sku + matchCounts.vendor_type + matchCounts.form_factor;
     await sql`
       UPDATE shopify_stores SET
         product_count = ${productRows.length},
@@ -275,7 +323,7 @@ async function main() {
 
   // 8. Print summary
   const total = productRows.length;
-  const totalMatched = matchCounts.upc + matchCounts.sku + matchCounts.vendor_type + matchCounts.form_factor;
+  const totalMatched = matchCounts.gtin + matchCounts.upc + matchCounts.sku + matchCounts.vendor_type + matchCounts.form_factor;
   const hitRate = total > 0 ? ((totalMatched / total) * 100).toFixed(1) : '0.0';
 
   console.log('\n  ═══════════════════════════════════════');
@@ -285,6 +333,7 @@ async function main() {
   console.log(`  Matched:         ${totalMatched} (${hitRate}%)`);
   console.log(`  Unmatched:       ${total - totalMatched}`);
   console.log('  ───────────────────────────────────────');
+  console.log(`  GTIN matches:    ${matchCounts.gtin}`);
   console.log(`  UPC matches:     ${matchCounts.upc}`);
   console.log(`  SKU matches:     ${matchCounts.sku}`);
   console.log(`  Vendor+type:     ${matchCounts.vendor_type}`);

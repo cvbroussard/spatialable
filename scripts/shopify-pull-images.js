@@ -13,6 +13,23 @@ const { neon } = require('@neondatabase/serverless');
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
 require('dotenv').config({ path: '.env.local' });
 
+// Inline GTIN normalization (CJS)
+function calculateCheckDigit(d) {
+  let s = 0;
+  for (let i = d.length - 1; i >= 0; i--) {
+    s += parseInt(d[i], 10) * ((d.length - 1 - i) % 2 === 0 ? 3 : 1);
+  }
+  return (10 - (s % 10)) % 10;
+}
+function normalizeGtin(input) {
+  const c = (input || '').trim().replace(/[-\s]/g, '');
+  if (!/^\d+$/.test(c) || ![8,12,13,14].includes(c.length)) return null;
+  if (c.length < 2) return null;
+  const check = parseInt(c[c.length - 1], 10);
+  if (calculateCheckDigit(c.slice(0, -1)) !== check) return null;
+  return c.padStart(14, '0');
+}
+
 function parseArgs() {
   const args = process.argv.slice(2);
   const opts = { limit: 100 };
@@ -92,14 +109,15 @@ async function main() {
       const imageUrl = await uploadToR2(r2, buffer, key, contentType);
 
       // Insert source_images row
+      const gtin = product.upc ? normalizeGtin(product.upc) : null;
       await sql`
         INSERT INTO source_images (
           image_url, original_url, funnel, curation_status,
-          product_name, category, upc, sku,
+          product_name, category, upc, gtin, sku,
           width, height, file_size_bytes, content_type
         ) VALUES (
           ${imageUrl}, ${product.image_url}, 'partner', 'pending',
-          ${product.title}, ${product.product_type}, ${product.upc}, ${product.sku},
+          ${product.title}, ${product.product_type}, ${product.upc}, ${gtin}, ${product.sku},
           NULL, NULL, ${buffer.length}, ${contentType}
         )
       `;

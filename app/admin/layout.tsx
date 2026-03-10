@@ -10,6 +10,7 @@ const LIBRARY_NAV = [
   { href: '/admin/library/materials', label: 'Materials' },
   { href: '/admin/library/taxonomy', label: 'Taxonomy' },
   { href: '/admin/library/pipeline', label: 'Pipeline' },
+  { href: '/admin/library/swatch-jobs', label: 'Swatch Jobs' },
 ];
 
 const CLIENTS_NAV = [

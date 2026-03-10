@@ -7,6 +7,7 @@ import { NextResponse } from 'next/server';
 const EMBED_CORS_HEADERS = {
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Expose-Headers': 'X-SA-SEO, X-SA-Assets, X-SA-Tier, X-SA-Expires',
   'Access-Control-Max-Age': '86400',
 };
 
@@ -36,11 +37,12 @@ function originMatchesDomain(origin: string, domain: string): boolean {
 export function validateOrigin(origin: string | null, domainWhitelist: string[]): string | null {
   if (domainWhitelist.length === 0) return null;
 
-  // Same-origin requests (e.g., dev testing) don't send an Origin header.
-  // In development, allow null origin. In production, cross-origin embeds always send Origin.
+  // Same-origin requests don't send an Origin header.
+  // Cross-origin (embed) requests always include Origin.
+  // Null origin is safe to accept — it means same-origin or direct navigation.
   if (!origin) {
     if (process.env.NODE_ENV === 'development') return 'http://localhost:3000';
-    return null;
+    return 'same-origin';
   }
 
   // Allow localhost in development

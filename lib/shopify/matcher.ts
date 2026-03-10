@@ -28,7 +28,34 @@ export async function matchProducts(products: ProductToMatch[]): Promise<MatchRe
   const results: Map<number, MatchResult> = new Map();
   let unmatched = [...products];
 
-  // ── Tier 1: UPC match (bulk) ───────────────────────────────────────────
+  // ── Tier 1: GTIN match (bulk, normalized) ─────────────────────────────
+
+  const withGtin = unmatched.filter((p) => (p as any).gtin);
+  if (withGtin.length > 0) {
+    const gtins = withGtin.map((p) => (p as any).gtin as string);
+    const assets = await sql`
+      SELECT id, gtin FROM assets
+      WHERE gtin = ANY(${gtins}) AND status = 'approved'
+    `;
+
+    const gtinToAsset = new Map(assets.map((a: any) => [a.gtin, a.id]));
+
+    for (const product of withGtin) {
+      const assetId = gtinToAsset.get((product as any).gtin);
+      if (assetId) {
+        results.set(product.id, {
+          shopifyProductId: product.id,
+          assetId,
+          matchType: 'gtin',
+          matchConfidence: 1.0,
+        });
+      }
+    }
+
+    unmatched = unmatched.filter((p) => !results.has(p.id));
+  }
+
+  // ── Tier 1b: UPC match (bulk, raw barcode fallback) ─────────────────
 
   const withUpc = unmatched.filter((p) => p.upc);
   if (withUpc.length > 0) {

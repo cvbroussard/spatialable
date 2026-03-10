@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import sql from '@/lib/db';
 import { requireAuth } from '@/lib/auth/api-key';
+import { normalizeGtin, looksLikeGtin } from '@/lib/gtin';
 
 export const dynamic = 'force-dynamic';
 
 /**
- * GET /api/assets/match — Find a matching asset by UPC, SKU, or category.
+ * GET /api/assets/match — Find a matching asset by GTIN, UPC, SKU, or category.
  *
- * Priority: exact UPC → exact SKU → category/form_factor match.
+ * Priority: GTIN → UPC → SKU → category/form_factor match.
  *
  * Query params:
+ *   ?gtin=00012345678905   (or any GTIN-8/12/13/14 — auto-normalized)
  *   ?upc=012345678901
  *   ?sku=MFG-SKU-001
  *   ?category=furniture/seating/sofa
@@ -20,18 +22,50 @@ export async function GET(request: NextRequest) {
     if (!guard.ok) return guard.response;
 
     const { searchParams } = new URL(request.url);
+    const gtinParam = searchParams.get('gtin');
     const upc = searchParams.get('upc');
     const sku = searchParams.get('sku');
     const category = searchParams.get('category');
 
-    if (!upc && !sku && !category) {
+    if (!gtinParam && !upc && !sku && !category) {
       return NextResponse.json(
-        { error: 'At least one of upc, sku, or category is required' },
+        { error: 'At least one of gtin, upc, sku, or category is required' },
         { status: 400 },
       );
     }
 
-    // Try exact UPC match first
+    // Try GTIN match first (normalize input)
+    const gtinInput = gtinParam || (upc && looksLikeGtin(upc) ? upc : null);
+    if (gtinInput) {
+      const normalized = normalizeGtin(gtinInput);
+      if (normalized) {
+        const [asset] = await sql`
+          SELECT id, specificity, glb_url, thumbnail_url, category_path, attributes, tags
+          FROM assets
+          WHERE gtin = ${normalized} AND status = 'approved'
+          LIMIT 1
+        `;
+        if (asset) {
+          await sql`
+            INSERT INTO asset_usage (asset_id, client_id, product_reference)
+            VALUES (${asset.id}, ${guard.client.id}, ${normalized})
+            ON CONFLICT (asset_id, client_id, product_reference) DO UPDATE
+            SET last_accessed_at = NOW(), access_count = asset_usage.access_count + 1
+          `;
+
+          return NextResponse.json({
+            asset_id: asset.id,
+            specificity: asset.specificity,
+            glb_url: asset.glb_url,
+            thumbnail_url: asset.thumbnail_url,
+            match_type: 'gtin',
+            match_confidence: 1.0,
+          });
+        }
+      }
+    }
+
+    // Try exact UPC match
     if (upc) {
       const [asset] = await sql`
         SELECT id, specificity, glb_url, thumbnail_url, category_path, attributes, tags
@@ -40,7 +74,6 @@ export async function GET(request: NextRequest) {
         LIMIT 1
       `;
       if (asset) {
-        // Track usage
         await sql`
           INSERT INTO asset_usage (asset_id, client_id, product_reference)
           VALUES (${asset.id}, ${guard.client.id}, ${upc})

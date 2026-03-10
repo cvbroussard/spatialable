@@ -256,7 +256,7 @@ export function PipelineClient() {
                 <Field label="Product" value={selected.product_metadata.name} />
               )}
               {selected.product_metadata?.upc && (
-                <Field label="UPC" value={selected.product_metadata.upc} />
+                <Field label="GTIN / UPC" value={selected.product_metadata.upc} />
               )}
               {selected.product_metadata?.category && (
                 <Field label="Category" value={selected.product_metadata.category} />

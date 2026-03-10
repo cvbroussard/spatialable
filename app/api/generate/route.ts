@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import sql from '@/lib/db';
 import { requireAuth } from '@/lib/auth/api-key';
 import { inngest } from '@/lib/inngest/client';
+import { normalizeGtin } from '@/lib/gtin';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,13 +47,20 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Check for existing asset by UPC or SKU before generating
+    // Check for existing asset by GTIN/UPC before generating
     if (product_metadata?.upc) {
-      const [existing] = await sql`
-        SELECT id, glb_url, status FROM assets
-        WHERE upc = ${product_metadata.upc} AND status IN ('approved', 'review')
-        LIMIT 1
-      `;
+      const gtin = normalizeGtin(product_metadata.upc);
+      const [existing] = gtin
+        ? await sql`
+            SELECT id, glb_url, status FROM assets
+            WHERE (gtin = ${gtin} OR upc = ${product_metadata.upc}) AND status IN ('approved', 'review')
+            LIMIT 1
+          `
+        : await sql`
+            SELECT id, glb_url, status FROM assets
+            WHERE upc = ${product_metadata.upc} AND status IN ('approved', 'review')
+            LIMIT 1
+          `;
       if (existing) {
         return NextResponse.json({
           job_id: null,
@@ -61,7 +69,7 @@ export async function POST(request: NextRequest) {
             glb_url: existing.glb_url,
             status: existing.status,
           },
-          message: 'An asset already exists for this UPC',
+          message: 'An asset already exists for this UPC/GTIN',
         });
       }
     }

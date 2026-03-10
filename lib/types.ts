@@ -2,7 +2,7 @@
 // Asset specificity levels
 // ---------------------------------------------------------------------------
 
-export type AssetSpecificity = 'upc' | 'sku' | 'form_factor';
+export type AssetSpecificity = 'upc' | 'sku' | 'form_factor' | 'gtin';
 
 export type AssetStatus = 'generating' | 'review' | 'approved' | 'rejected' | 'archived';
 
@@ -11,6 +11,7 @@ export interface Asset {
   specificity: AssetSpecificity;
   status: AssetStatus;
   upc: string | null;
+  gtin: string | null;
   manufacturer_sku: string | null;
   form_factor_id: number | null;
   glb_url: string | null;
@@ -29,7 +30,7 @@ export interface Asset {
 // Materials (PBR library)
 // ---------------------------------------------------------------------------
 
-export type MaterialSource = 'poly_haven' | 'ambientcg' | 'manufacturer' | 'scanned' | 'custom';
+export type MaterialSource = 'poly_haven' | 'ambientcg' | 'manufacturer' | 'scanned' | 'custom' | 'swatch';
 
 export interface Material {
   id: number;
@@ -42,10 +43,61 @@ export interface Material {
   roughness_url: string | null;
   metallic_url: string | null;
   ao_url: string | null;
+  height_url: string | null;
   preview_url: string | null;
+  manufacturer_name: string | null;
+  manufacturer_sku: string | null;
+  color_hex: string | null;
   tags: string[];
   created_at: string;
   updated_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// Swatch jobs (swatch-to-PBR pipeline)
+// ---------------------------------------------------------------------------
+
+export type SwatchJobStatus =
+  | 'uploaded'
+  | 'analyzing'
+  | 'preprocessing'
+  | 'deriving'
+  | 'review'
+  | 'approved'
+  | 'rejected'
+  | 'failed';
+
+export interface SwatchJob {
+  id: string;
+  swatch_image_url: string;
+  manufacturer_name: string | null;
+  manufacturer_sku: string | null;
+  material_name: string | null;
+  status: SwatchJobStatus;
+  vision_analysis: SwatchVisionAnalysis | null;
+  derived_material_type: string | null;
+  derived_tags: string[];
+  preprocessed_albedo_url: string | null;
+  scenario_job_id: string | null;
+  material_id: number | null;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SwatchVisionAnalysis {
+  material_category: string;
+  material_subcategory: string;
+  weave_pattern: string;
+  color_primary: string;
+  color_description: string;
+  finish: string;
+  texture_scale: 'fine' | 'medium' | 'coarse';
+  surface_regularity: 'uniform' | 'slightly_irregular' | 'heavily_textured';
+  estimated_roughness: number;
+  estimated_metallic: number;
+  tiling_recommendation: string;
+  confidence: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -160,6 +212,7 @@ export interface SourceImage {
   product_name: string | null;
   category: string | null;
   upc: string | null;
+  gtin: string | null;
   sku: string | null;
   description: string | null;
   width: number | null;
@@ -215,7 +268,7 @@ export interface ProductAsset {
 
 export type ShopifyStoreStatus = 'pending' | 'active' | 'paused' | 'disconnected';
 
-export type ShopifyMatchType = 'upc' | 'sku' | 'vendor_type' | 'form_factor' | 'none';
+export type ShopifyMatchType = 'upc' | 'sku' | 'vendor_type' | 'form_factor' | 'gtin' | 'none';
 
 export interface ShopifyStore {
   id: number;
@@ -244,6 +297,7 @@ export interface ShopifyProduct {
   product_type: string | null;
   handle: string | null;
   upc: string | null;
+  gtin: string | null;
   sku: string | null;
   image_url: string | null;
   status: string;
@@ -318,6 +372,79 @@ export interface StyleProfile {
   background_color: string | null;
   text_color: string | null;
   custom_vars: Record<string, string>;
+  created_at: string;
+  updated_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// Product ref mapping (per-client product identifier resolution)
+// ---------------------------------------------------------------------------
+
+export interface ProductRefMap {
+  id: number;
+  client_id: string;
+  external_ref: string;
+  canonical_ref: string;
+  match_type: 'upc' | 'sku' | 'shopify' | 'manual' | 'gtin';
+  created_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// Taxonomy assets (category, brand, editorial)
+// ---------------------------------------------------------------------------
+
+export type TaxonomyAssetStatus = 'generating' | 'review' | 'approved';
+
+export interface CategoryAsset {
+  id: number;
+  form_factor_id: number;
+  role: 'card' | 'hero' | 'icon' | 'placeholder';
+  url: string;
+  content_type: string | null;
+  width: number | null;
+  height: number | null;
+  status: TaxonomyAssetStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BrandTaxonomy {
+  id: number;
+  name: string;
+  slug: string;
+  description: string | null;
+  product_count: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BrandAsset {
+  id: number;
+  brand_id: number;
+  role: 'logo' | 'hero' | 'card';
+  url: string;
+  content_type: string | null;
+  width: number | null;
+  height: number | null;
+  status: TaxonomyAssetStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EditorialAsset {
+  id: number;
+  name: string;
+  page_scope: 'home' | 'collection' | 'global';
+  role: 'hero' | 'banner' | 'lifestyle';
+  url: string;
+  content_type: string | null;
+  width: number | null;
+  height: number | null;
+  position: number;
+  active_from: string | null;
+  active_until: string | null;
+  is_active: boolean;
   created_at: string;
   updated_at: string;
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import sql, { query } from '@/lib/db';
 import { requireAuth } from '@/lib/auth/api-key';
+import { looksLikeGtin, normalizeGtin } from '@/lib/gtin';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,9 +39,16 @@ export async function GET(request: NextRequest) {
     }
 
     if (search) {
-      conditions.push(`(category_path ILIKE $${paramIdx} OR upc = $${paramIdx + 1} OR manufacturer_sku = $${paramIdx + 1})`);
-      values.push(`%${search}%`, search);
-      paramIdx += 2;
+      const searchGtin = looksLikeGtin(search) ? normalizeGtin(search) : null;
+      if (searchGtin) {
+        conditions.push(`(gtin = $${paramIdx} OR upc = $${paramIdx + 1} OR manufacturer_sku = $${paramIdx + 1} OR category_path ILIKE $${paramIdx + 2})`);
+        values.push(searchGtin, search, `%${search}%`);
+        paramIdx += 3;
+      } else {
+        conditions.push(`(category_path ILIKE $${paramIdx} OR upc = $${paramIdx + 1} OR manufacturer_sku = $${paramIdx + 1})`);
+        values.push(`%${search}%`, search);
+        paramIdx += 2;
+      }
     }
 
     const where = conditions.join(' AND ');
@@ -51,7 +59,7 @@ export async function GET(request: NextRequest) {
     );
 
     const assets = await query(
-      `SELECT id, specificity, status, upc, manufacturer_sku,
+      `SELECT id, specificity, status, upc, gtin, manufacturer_sku,
               glb_url, thumbnail_url, vertex_count, file_size_bytes,
               category_path, tags, created_at
        FROM assets

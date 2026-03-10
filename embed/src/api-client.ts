@@ -2,7 +2,7 @@
 // Embed API client — runs in consumer's browser
 // ---------------------------------------------------------------------------
 
-import type { InitResponse, ResolveResponse } from './types';
+import type { ResolveResult, SeoPayload, AssetRef } from './types';
 
 const API_BASE = '__SA_API_BASE__'; // Replaced at build time or set via config
 
@@ -17,53 +17,62 @@ export function getApiBase(): string {
 }
 
 /**
- * POST /api/embed/init — Validate token, get config + style profile.
- */
-export async function initSubscription(token: string): Promise<InitResponse> {
-  const res = await fetch(`${apiBase}/api/embed/init`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ token }),
-  });
-
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    return { valid: false, tier: '', style_profile: null, config: { allowed_types: [], impression_remaining: null }, error: body.error || `HTTP ${res.status}` };
-  }
-
-  return res.json();
-}
-
-/**
- * GET /api/embed/resolve — Resolve asset(s) for rendering.
+ * GET /api/embed/resolve — Fetch server-rendered HTML + metadata headers.
  */
 export async function resolveAsset(params: {
   token: string;
-  asset?: string;
-  productId?: string;
+  productRef?: string;
   productType?: string;
-}): Promise<ResolveResponse> {
+  pageType?: string;
+  collectionRef?: string;
+  featuredCollection?: string;
+  signal?: AbortSignal;
+}): Promise<ResolveResult> {
   const query = new URLSearchParams();
   query.set('token', params.token);
-  if (params.asset) query.set('asset', params.asset);
-  if (params.productId) query.set('product-id', params.productId);
+  if (params.productRef) query.set('product-ref', params.productRef);
   if (params.productType) query.set('product-type', params.productType);
+  if (params.pageType) query.set('page-type', params.pageType);
+  if (params.collectionRef) query.set('collection-ref', params.collectionRef);
+  if (params.featuredCollection) query.set('featured-collection', params.featuredCollection);
 
-  const res = await fetch(`${apiBase}/api/embed/resolve?${query}`);
+  const res = await fetch(`${apiBase}/api/embed/resolve?${query}`, {
+    signal: params.signal,
+  });
 
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    return { type: params.productType || 'hero', assets: [], resolved: false, expires_in: 0, error: body.error || `HTTP ${res.status}` };
+    return { html: '', seo: null, assets: [], tier: '', expiresIn: 0 };
   }
 
-  return res.json();
+  const html = await res.text();
+
+  // Parse custom headers
+  let seo: SeoPayload | null = null;
+  const seoHeader = res.headers.get('X-SA-SEO');
+  if (seoHeader) {
+    try {
+      seo = JSON.parse(atob(seoHeader));
+    } catch { /* ignore */ }
+  }
+
+  let assets: AssetRef[] = [];
+  const assetsHeader = res.headers.get('X-SA-Assets');
+  if (assetsHeader) {
+    try {
+      assets = JSON.parse(atob(assetsHeader));
+    } catch { /* ignore */ }
+  }
+
+  const tier = res.headers.get('X-SA-Tier') || '';
+  const expiresIn = parseInt(res.headers.get('X-SA-Expires') || '3600', 10);
+
+  return { html, seo, assets, tier, expiresIn };
 }
 
 /**
  * POST /api/embed/impression — Batch impression beacon.
  */
 export async function reportImpressions(token: string, events: Array<{ asset_id: string; product_ref?: string; type?: string }>) {
-  // Use sendBeacon for reliability on page unload, fall back to fetch
   const payload = JSON.stringify({ token, events });
   const url = `${apiBase}/api/embed/impression`;
 

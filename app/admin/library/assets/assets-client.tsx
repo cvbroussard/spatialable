@@ -8,6 +8,7 @@ interface AssetRow {
   specificity: string;
   status: string;
   upc: string | null;
+  gtin: string | null;
   manufacturer_sku: string | null;
   form_factor_id: number | null;
   glb_url: string | null;
@@ -44,6 +45,7 @@ function StatusBadge({ status }: { status: string }) {
 
 function SpecBadge({ specificity }: { specificity: string }) {
   const colors: Record<string, string> = {
+    gtin: 'bg-indigo-100 text-indigo-700',
     upc: 'bg-emerald-100 text-emerald-700',
     sku: 'bg-sky-100 text-sky-700',
     form_factor: 'bg-amber-100 text-amber-700',
@@ -143,7 +145,7 @@ export function AssetsClient() {
             className="rounded-lg border border-zinc-200 px-3 py-1.5 text-xs bg-white"
           >
             <option value="">All specificities</option>
-            {['upc', 'sku', 'form_factor'].map((s) => (
+            {['gtin', 'upc', 'sku', 'form_factor'].map((s) => (
               <option key={s} value={s}>{s}</option>
             ))}
           </select>
@@ -206,7 +208,7 @@ export function AssetsClient() {
                       )}
                     </div>
                     <div className="text-[11px] text-zinc-500 truncate">
-                      {asset.upc || asset.manufacturer_sku || asset.category_path || asset.id.slice(0, 8)}
+                      {asset.gtin || asset.upc || asset.manufacturer_sku || asset.category_path || asset.id.slice(0, 8)}
                     </div>
                   </div>
                 </button>
@@ -287,6 +289,7 @@ export function AssetsClient() {
             {/* Fields */}
             <div className="space-y-3 text-sm">
               <Field label="ID" value={selected.id} mono />
+              {selected.gtin && <Field label="GTIN" value={selected.gtin} mono />}
               {selected.upc && <Field label="UPC" value={selected.upc} />}
               {selected.manufacturer_sku && <Field label="SKU" value={selected.manufacturer_sku} />}
               {selected.category_path && <Field label="Category" value={selected.category_path} />}

@@ -3,6 +3,7 @@ import sql from '@/lib/db';
 import { createImageTo3D, createMultiImageTo3D, pollUntilComplete } from '@/lib/tripo/client';
 import { identifyMaterials } from '@/lib/vision/identify-materials';
 import { downloadToBuffer, uploadGlb, uploadTexture, generateAssetKey } from '@/lib/r2/client';
+import { normalizeGtin } from '@/lib/gtin';
 
 /**
  * Main pipeline orchestration function.
@@ -135,17 +136,19 @@ export const generateModel = inngest.createFunction(
       const [job] = await sql`SELECT * FROM generation_jobs WHERE id = ${jobId}`;
       const meta = (job.product_metadata || {}) as Record<string, any>;
 
-      const specificity = meta.upc ? 'upc' : meta.sku ? 'sku' : 'form_factor';
+      const gtin = meta.upc ? normalizeGtin(meta.upc) : null;
+      const specificity = gtin ? 'gtin' : meta.upc ? 'upc' : meta.sku ? 'sku' : 'form_factor';
 
       const [asset] = await sql`
         INSERT INTO assets (
-          specificity, status, upc, manufacturer_sku,
+          specificity, status, upc, gtin, manufacturer_sku,
           glb_url, thumbnail_url, file_size_bytes,
           source_images, category_path, attributes, tags
         ) VALUES (
           ${specificity}::asset_specificity,
           'review'::asset_status,
           ${meta.upc || null},
+          ${gtin},
           ${meta.sku || null},
           ${r2Urls.glbUrl},
           ${r2Urls.thumbnailUrl || null},

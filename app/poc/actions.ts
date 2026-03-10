@@ -2,23 +2,31 @@
 
 import sql from '@/lib/db';
 import { inngest } from '@/lib/inngest/client';
+import { normalizeGtin } from '@/lib/gtin';
 
 export async function submitGeneration(
   sourceImages: string[],
   metadata: { name?: string; upc?: string; sku?: string; category?: string },
 ) {
-  // Check for existing asset by UPC
+  // Check for existing asset by GTIN/UPC
   if (metadata.upc) {
-    const [existing] = await sql`
-      SELECT id, glb_url, status FROM assets
-      WHERE upc = ${metadata.upc} AND status IN ('approved', 'review')
-      LIMIT 1
-    `;
+    const gtin = normalizeGtin(metadata.upc);
+    const [existing] = gtin
+      ? await sql`
+          SELECT id, glb_url, status FROM assets
+          WHERE (gtin = ${gtin} OR upc = ${metadata.upc}) AND status IN ('approved', 'review')
+          LIMIT 1
+        `
+      : await sql`
+          SELECT id, glb_url, status FROM assets
+          WHERE upc = ${metadata.upc} AND status IN ('approved', 'review')
+          LIMIT 1
+        `;
     if (existing) {
       return {
         job_id: null,
         existing_asset: { id: existing.id, glb_url: existing.glb_url, status: existing.status },
-        message: 'An asset already exists for this UPC',
+        message: 'An asset already exists for this UPC/GTIN',
       };
     }
   }

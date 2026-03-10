@@ -206,7 +206,7 @@ export function PocClient() {
               />
             </div>
             <div>
-              <label className="block text-xs text-zinc-500 mb-1">UPC</label>
+              <label className="block text-xs text-zinc-500 mb-1">GTIN / UPC</label>
               <input
                 type="text"
                 value={upc}

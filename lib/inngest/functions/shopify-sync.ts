@@ -1,5 +1,6 @@
 import { inngest } from '../client';
 import sql from '@/lib/db';
+import { normalizeGtin } from '@/lib/gtin';
 
 // ---------------------------------------------------------------------------
 // Shopify product sync — async handler for webhook events
@@ -33,15 +34,17 @@ export const shopifyProductSync = inngest.createFunction(
     // ── products/create or products/update ────────────────────────────────
     const product = (await step.run('upsert-product', async () => {
       const primaryVariant = payload.variants?.[0];
+      const barcode = primaryVariant?.barcode || null;
+      const gtin = barcode ? normalizeGtin(barcode) : null;
 
       const [row] = await sql`
         INSERT INTO shopify_products (
           store_id, shopify_product_id, shopify_variant_id,
-          title, vendor, product_type, handle, upc, sku, image_url, status, synced_at
+          title, vendor, product_type, handle, upc, gtin, sku, image_url, status, synced_at
         ) VALUES (
           ${storeId}, ${shopifyProductId}, ${primaryVariant?.id || null},
           ${payload.title}, ${payload.vendor || null}, ${payload.product_type || null},
-          ${payload.handle}, ${primaryVariant?.barcode || null}, ${primaryVariant?.sku || null},
+          ${payload.handle}, ${barcode}, ${gtin}, ${primaryVariant?.sku || null},
           ${payload.images?.[0]?.src || null}, ${payload.status || 'active'}, NOW()
         )
         ON CONFLICT (store_id, shopify_product_id) DO UPDATE SET
@@ -51,15 +54,16 @@ export const shopifyProductSync = inngest.createFunction(
           product_type = EXCLUDED.product_type,
           handle = EXCLUDED.handle,
           upc = EXCLUDED.upc,
+          gtin = EXCLUDED.gtin,
           sku = EXCLUDED.sku,
           image_url = EXCLUDED.image_url,
           status = EXCLUDED.status,
           synced_at = NOW()
-        RETURNING id, upc, sku, vendor, product_type
+        RETURNING id, upc, gtin, sku, vendor, product_type
       `;
 
       return row;
-    })) as { id: number; upc: string | null; sku: string | null; vendor: string | null; product_type: string | null };
+    })) as { id: number; upc: string | null; gtin: string | null; sku: string | null; vendor: string | null; product_type: string | null };
 
     // Run matching cascade
     const match = await step.run('match-product', async () => {
@@ -67,8 +71,16 @@ export const shopifyProductSync = inngest.createFunction(
       let matchConfidence = 0.0;
       let assetId = null;
 
-      // Tier 1: UPC
-      if (product.upc) {
+      // Tier 1: GTIN (normalized barcode → assets.gtin)
+      if (product.gtin) {
+        const [asset] = await sql`
+          SELECT id FROM assets WHERE gtin = ${product.gtin} AND status = 'approved' LIMIT 1
+        `;
+        if (asset) { assetId = asset.id; matchType = 'gtin'; matchConfidence = 1.0; }
+      }
+
+      // Tier 1b: UPC fallback (raw barcode → assets.upc)
+      if (!assetId && product.upc) {
         const [asset] = await sql`
           SELECT id FROM assets WHERE upc = ${product.upc} AND status = 'approved' LIMIT 1
         `;

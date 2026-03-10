@@ -24,7 +24,7 @@ async function main() {
   console.log('=== Enums ===');
 
   await sql`DO $$ BEGIN
-    CREATE TYPE asset_specificity AS ENUM ('upc', 'sku', 'form_factor');
+    CREATE TYPE asset_specificity AS ENUM ('upc', 'sku', 'form_factor', 'gtin');
   EXCEPTION WHEN duplicate_object THEN NULL; END $$`;
   console.log('  + asset_specificity');
 
@@ -34,7 +34,7 @@ async function main() {
   console.log('  + asset_status');
 
   await sql`DO $$ BEGIN
-    CREATE TYPE material_source AS ENUM ('poly_haven', 'ambientcg', 'manufacturer', 'scanned', 'custom');
+    CREATE TYPE material_source AS ENUM ('poly_haven', 'ambientcg', 'manufacturer', 'scanned', 'custom', 'swatch');
   EXCEPTION WHEN duplicate_object THEN NULL; END $$`;
   console.log('  + material_source');
 
@@ -99,7 +99,11 @@ async function main() {
       roughness_url TEXT,
       metallic_url TEXT,
       ao_url TEXT,
+      height_url TEXT,
       preview_url TEXT,
+      manufacturer_name TEXT,
+      manufacturer_sku TEXT,
+      color_hex TEXT,
       tags TEXT[] DEFAULT '{}',
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -116,6 +120,7 @@ async function main() {
       specificity asset_specificity NOT NULL,
       status asset_status NOT NULL DEFAULT 'generating',
       upc TEXT,
+      gtin TEXT,
       manufacturer_sku TEXT,
       form_factor_id INT REFERENCES form_factors(id),
       glb_url TEXT,
@@ -131,6 +136,7 @@ async function main() {
     )
   `;
   await sql`CREATE INDEX IF NOT EXISTS idx_assets_upc ON assets(upc) WHERE upc IS NOT NULL`;
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_assets_gtin ON assets(gtin) WHERE gtin IS NOT NULL`;
   await sql`CREATE INDEX IF NOT EXISTS idx_assets_sku ON assets(manufacturer_sku) WHERE manufacturer_sku IS NOT NULL`;
   await sql`CREATE INDEX IF NOT EXISTS idx_assets_form_factor ON assets(form_factor_id) WHERE form_factor_id IS NOT NULL`;
   await sql`CREATE INDEX IF NOT EXISTS idx_assets_status ON assets(status)`;
@@ -217,6 +223,7 @@ async function main() {
       product_name TEXT,
       category TEXT,
       upc TEXT,
+      gtin TEXT,
       sku TEXT,
       description TEXT,
       width INT,
@@ -327,7 +334,7 @@ async function main() {
   console.log('  + shopify_store_status');
 
   await sql`DO $$ BEGIN
-    CREATE TYPE shopify_match_type AS ENUM ('upc', 'sku', 'vendor_type', 'form_factor', 'none');
+    CREATE TYPE shopify_match_type AS ENUM ('upc', 'sku', 'vendor_type', 'form_factor', 'gtin', 'none');
   EXCEPTION WHEN duplicate_object THEN NULL; END $$`;
   console.log('  + shopify_match_type');
 
@@ -364,6 +371,7 @@ async function main() {
       product_type TEXT,
       handle TEXT,
       upc TEXT,
+      gtin TEXT,
       sku TEXT,
       image_url TEXT,
       status TEXT NOT NULL DEFAULT 'active',
@@ -373,6 +381,7 @@ async function main() {
   `;
   await sql`CREATE INDEX IF NOT EXISTS idx_shopify_products_store ON shopify_products(store_id)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_shopify_products_upc ON shopify_products(upc) WHERE upc IS NOT NULL`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_shopify_products_gtin ON shopify_products(gtin) WHERE gtin IS NOT NULL`;
   await sql`CREATE INDEX IF NOT EXISTS idx_shopify_products_sku ON shopify_products(sku) WHERE sku IS NOT NULL`;
   console.log('  + shopify_products');
 
@@ -417,6 +426,39 @@ async function main() {
   await sql`CREATE INDEX IF NOT EXISTS idx_shopify_sync_log_store ON shopify_sync_log(store_id)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_shopify_sync_log_event ON shopify_sync_log(event_type)`;
   console.log('  + shopify_sync_log');
+
+  // ── Swatch pipeline ──────────────────────────────────────────────────
+
+  await sql`DO $$ BEGIN
+    CREATE TYPE swatch_job_status AS ENUM (
+      'uploaded', 'analyzing', 'preprocessing', 'deriving',
+      'review', 'approved', 'rejected', 'failed'
+    );
+  EXCEPTION WHEN duplicate_object THEN NULL; END $$`;
+  console.log('  + swatch_job_status');
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS swatch_jobs (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      swatch_image_url TEXT NOT NULL,
+      manufacturer_name TEXT,
+      manufacturer_sku TEXT,
+      material_name TEXT,
+      status swatch_job_status NOT NULL DEFAULT 'uploaded',
+      vision_analysis JSONB,
+      derived_material_type TEXT,
+      derived_tags TEXT[] DEFAULT '{}',
+      preprocessed_albedo_url TEXT,
+      scenario_job_id TEXT,
+      material_id INT REFERENCES materials(id),
+      error TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_swatch_jobs_status ON swatch_jobs(status)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_swatch_jobs_material ON swatch_jobs(material_id) WHERE material_id IS NOT NULL`;
+  console.log('  + swatch_jobs');
 
   // Asset usage
   await sql`

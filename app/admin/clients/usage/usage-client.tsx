@@ -18,6 +18,7 @@ interface TopAsset {
   category_path: string | null;
   specificity: string;
   upc: string | null;
+  gtin: string | null;
   manufacturer_sku: string | null;
   assignment_count: number;
 }
@@ -177,7 +178,7 @@ export function UsageClient() {
                             )}
                           </div>
                           <span className="font-mono text-xs text-zinc-600 truncate">
-                            {asset.upc || asset.manufacturer_sku || asset.id.slice(0, 8)}
+                            {asset.gtin || asset.upc || asset.manufacturer_sku || asset.id.slice(0, 8)}
                           </span>
                         </div>
                       </td>
