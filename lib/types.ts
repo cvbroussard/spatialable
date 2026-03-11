@@ -226,6 +226,10 @@ export interface SourceImage {
   rejection_reason: string | null;
   product_group: string | null;
   generation_job_id: string | null;
+  source_url: string | null;
+  vendor: string | null;
+  product_handle: string | null;
+  image_position: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -239,8 +243,37 @@ export interface BrandTarget {
   notes: string | null;
   image_count: number;
   candidate_count: number;
+  sitemaps: string[];
+  importer_key: string;
+  url_pattern_include: string | null;
+  url_pattern_exclude: string | null;
+  request_delay_ms: number;
+  last_pull_at: string | null;
+  discovered_count: number;
+  pulled_count: number;
   created_at: string;
   updated_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// Pull runs (image pull pipeline tracking)
+// ---------------------------------------------------------------------------
+
+export type PullRunStatus = 'running' | 'completed' | 'failed' | 'cancelled';
+
+export interface PullRun {
+  id: string;
+  brand_target_id: number;
+  status: PullRunStatus;
+  discovered_urls: number;
+  processed_count: number;
+  created_count: number;
+  skipped_count: number;
+  failed_count: number;
+  current_url: string | null;
+  errors: { url: string; error: string }[];
+  started_at: string;
+  completed_at: string | null;
 }
 
 // ---------------------------------------------------------------------------

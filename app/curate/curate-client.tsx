@@ -405,10 +405,15 @@ export function CurateClient() {
                       </p>
                       <div className="flex items-center justify-between">
                         {statusBadge(img.curation_status)}
-                        {img.category && (
+                        {img.gtin ? (
+                          <span className="font-mono text-[9px] text-indigo-500 truncate ml-1">{img.gtin}</span>
+                        ) : img.category ? (
                           <span className="text-[9px] text-zinc-400 truncate ml-1">{img.category}</span>
-                        )}
+                        ) : null}
                       </div>
+                      {img.angle && (
+                        <span className="text-[9px] text-zinc-400">{img.angle}</span>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -531,9 +536,15 @@ export function CurateClient() {
                   />
                 </div>
               </div>
+              {detailImage.gtin && (
+                <div>
+                  <label className="block text-[10px] text-zinc-400 mb-1">GTIN</label>
+                  <p className="font-mono text-xs text-indigo-600 bg-indigo-50 rounded-lg px-3 py-1.5">{detailImage.gtin}</p>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-[10px] text-zinc-400 mb-1">GTIN / UPC</label>
+                  <label className="block text-[10px] text-zinc-400 mb-1">UPC</label>
                   <input
                     type="text"
                     value={editUpc}

@@ -204,6 +204,14 @@ async function main() {
       notes TEXT,
       image_count INT NOT NULL DEFAULT 0,
       candidate_count INT NOT NULL DEFAULT 0,
+      sitemaps TEXT[] DEFAULT '{}',
+      importer_key TEXT NOT NULL DEFAULT 'shopify-api',
+      url_pattern_include TEXT,
+      url_pattern_exclude TEXT,
+      request_delay_ms INT NOT NULL DEFAULT 500,
+      last_pull_at TIMESTAMPTZ,
+      discovered_count INT NOT NULL DEFAULT 0,
+      pulled_count INT NOT NULL DEFAULT 0,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
@@ -237,6 +245,10 @@ async function main() {
       rejection_reason TEXT,
       product_group TEXT,
       generation_job_id UUID REFERENCES generation_jobs(id),
+      source_url TEXT,
+      vendor TEXT,
+      product_handle TEXT,
+      image_position INT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
@@ -246,7 +258,37 @@ async function main() {
   await sql`CREATE INDEX IF NOT EXISTS idx_source_images_brand ON source_images(brand_target_id) WHERE brand_target_id IS NOT NULL`;
   await sql`CREATE INDEX IF NOT EXISTS idx_source_images_group ON source_images(product_group) WHERE product_group IS NOT NULL`;
   await sql`CREATE INDEX IF NOT EXISTS idx_source_images_category ON source_images(category) WHERE category IS NOT NULL`;
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_source_images_source_dedup
+    ON source_images(source_url, image_position)
+    WHERE source_url IS NOT NULL AND image_position IS NOT NULL`;
   console.log('  + source_images');
+
+  // ── Pull runs ──────────────────────────────────────────────────────────
+
+  await sql`DO $$ BEGIN
+    CREATE TYPE pull_run_status AS ENUM ('running', 'completed', 'failed', 'cancelled');
+  EXCEPTION WHEN duplicate_object THEN NULL; END $$`;
+  console.log('  + pull_run_status');
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS pull_runs (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      brand_target_id INT NOT NULL REFERENCES brand_targets(id),
+      status pull_run_status NOT NULL DEFAULT 'running',
+      discovered_urls INT NOT NULL DEFAULT 0,
+      processed_count INT NOT NULL DEFAULT 0,
+      created_count INT NOT NULL DEFAULT 0,
+      skipped_count INT NOT NULL DEFAULT 0,
+      failed_count INT NOT NULL DEFAULT 0,
+      current_url TEXT,
+      errors JSONB NOT NULL DEFAULT '[]',
+      started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      completed_at TIMESTAMPTZ
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_pull_runs_brand ON pull_runs(brand_target_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_pull_runs_status ON pull_runs(status)`;
+  console.log('  + pull_runs');
 
   // ── Embed delivery ─────────────────────────────────────────────────────
 
